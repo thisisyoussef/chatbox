@@ -45,6 +45,7 @@ import * as toastActions from '@/stores/toastActions'
 import ActionMenu, { type ActionMenuItemProps } from '../ActionMenu'
 import { isContainRenderableCode, MessageArtifact } from '../Artifact'
 import { ChatBridgeMessagePart } from '../chatbridge/ChatBridgeMessagePart'
+import { isChatBridgeTrayEligiblePart } from '../chatbridge/apps/surface-contract'
 import { AssistantAvatar, SystemAvatar, UserAvatar } from '../common/Avatar'
 import { ScalableIcon } from '../common/ScalableIcon'
 import Loading from '../icons/Loading'
@@ -476,7 +477,9 @@ const _Message: FC<Props> = (props) => {
                           key={`app-${item.appInstanceId}-${index}`}
                           part={item as MessageAppPart}
                           presentation={
-                            floatedChatBridgeAppInstanceId && floatedChatBridgeAppInstanceId === item.appInstanceId
+                            floatedChatBridgeAppInstanceId &&
+                            floatedChatBridgeAppInstanceId === item.appInstanceId &&
+                            isChatBridgeTrayEligiblePart(item)
                               ? 'anchor'
                               : 'inline'
                           }

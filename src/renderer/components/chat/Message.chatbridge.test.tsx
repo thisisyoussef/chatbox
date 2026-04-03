@@ -4,7 +4,11 @@
 
 import { MantineProvider } from '@mantine/core'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { createChatBridgeChessRuntimeSnapshot, writeChatBridgeDegradedCompletionValues } from '@shared/chatbridge'
+import {
+  createChatBridgeChessRuntimeSnapshot,
+  createChatBridgeRouteMessagePart,
+  writeChatBridgeDegradedCompletionValues,
+} from '@shared/chatbridge'
 import type { Message } from '@shared/types'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { modifyMessage } from '@/stores/sessionActions'
@@ -229,6 +233,45 @@ describe('Message chatbridge rendering', () => {
     expect(screen.getByTestId('chatbridge-anchor')).toBeTruthy()
     expect(screen.getByText('Focus app')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /g1, white knight/i })).toBeNull()
+  })
+
+  it('keeps route receipts inline even when the floated instance id matches the message part', () => {
+    const routePart = createChatBridgeRouteMessagePart({
+      schemaVersion: 2,
+      hostRuntime: 'desktop-electron',
+      kind: 'refuse',
+      reasonCode: 'no-confident-match',
+      prompt: 'What should I cook for dinner tonight?',
+      summary: 'No reviewed app is a confident fit for this request, so the host will keep helping in chat instead of forcing a launch.',
+      matches: [],
+    })
+
+    const msg: Message = {
+      id: 'assistant-route-receipt-1',
+      role: 'assistant',
+      contentParts: [routePart],
+      timestamp: Date.now(),
+    }
+
+    render(
+      <MantineProvider>
+        <MessageComponent
+          sessionId="session-1"
+          sessionType="chat"
+          msg={msg}
+          buttonGroup="none"
+          assistantAvatarKey=""
+          floatedChatBridgeAppInstanceId={routePart.appInstanceId}
+          floatedChatBridgeTrayMinimized={false}
+          onOpenFloatedChatBridgeApp={vi.fn()}
+        />
+      </MantineProvider>
+    )
+
+    expect(screen.queryByTestId('chatbridge-anchor')).toBeNull()
+    expect(screen.queryByText('Focus app')).toBeNull()
+    expect(screen.getByTestId('chatbridge-route-artifact')).toBeTruthy()
+    expect(screen.getByText('Keep helping in chat')).toBeTruthy()
   })
 
   it('persists degraded recovery acknowledgements through the existing message update path', () => {

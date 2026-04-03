@@ -177,6 +177,7 @@ describe('chatbridge live seed fixtures', () => {
       'drawing-kit-doodle-dare',
       'weather-dashboard',
       'chess-runtime',
+      'runtime-and-route-receipt',
       'history-and-preview',
     ])
     expect(fixtures.find((fixture) => fixture.id === 'drawing-kit-doodle-dare')).toMatchObject({
@@ -189,6 +190,10 @@ describe('chatbridge live seed fixtures', () => {
     })
     expect(fixtures.find((fixture) => fixture.id === 'chess-runtime')).toMatchObject({
       fixtureRole: 'active-flagship',
+      smokeSupport: 'supported',
+    })
+    expect(fixtures.find((fixture) => fixture.id === 'runtime-and-route-receipt')).toMatchObject({
+      fixtureRole: 'platform-regression',
       smokeSupport: 'supported',
     })
     expect(fixtures.find((fixture) => fixture.id === 'history-and-preview')).toMatchObject({

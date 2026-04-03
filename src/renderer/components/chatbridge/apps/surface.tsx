@@ -1,10 +1,10 @@
 import { getChatBridgeDebateArenaState, getChatBridgeStoryBuilderState } from '@shared/chatbridge'
 import type { MessageAppPart } from '@shared/types'
 import type { ReactNode } from 'react'
-import { isChatBridgeReviewedAppLaunchPart } from '@/packages/chatbridge/reviewed-app-launch'
 import { DebateArenaPanel } from './debate-arena/DebateArenaPanel'
 import { ReviewedAppLaunchSurface } from './ReviewedAppLaunchSurface'
 import { StoryBuilderPanel } from './story-builder/StoryBuilderPanel'
+import { getChatBridgeSurfaceKind } from './surface-contract'
 
 type ChatBridgeSurfaceContentOptions = {
   part: MessageAppPart
@@ -13,22 +13,18 @@ type ChatBridgeSurfaceContentOptions = {
 }
 
 export function getChatBridgeSurfaceContent({ part, sessionId, messageId }: ChatBridgeSurfaceContentOptions): ReactNode {
-  if (
-    isChatBridgeReviewedAppLaunchPart(part) &&
-    (part.lifecycle === 'launching' || part.lifecycle === 'ready' || part.lifecycle === 'active')
-  ) {
-    return <ReviewedAppLaunchSurface part={part} sessionId={sessionId} messageId={messageId} />
+  switch (getChatBridgeSurfaceKind(part)) {
+    case 'reviewed-launch':
+      return <ReviewedAppLaunchSurface part={part} sessionId={sessionId} messageId={messageId} />
+    case 'story-builder': {
+      const state = getChatBridgeStoryBuilderState(part.values?.chatbridgeStoryBuilder)
+      return state ? <StoryBuilderPanel part={part} state={state} /> : null
+    }
+    case 'debate-arena': {
+      const state = getChatBridgeDebateArenaState(part.values?.chatbridgeDebateArena)
+      return state ? <DebateArenaPanel part={part} state={state} /> : null
+    }
+    default:
+      return null
   }
-
-  if (part.appId === 'story-builder') {
-    const state = getChatBridgeStoryBuilderState(part.values?.chatbridgeStoryBuilder)
-    return state ? <StoryBuilderPanel part={part} state={state} /> : null
-  }
-
-  if (part.appId === 'debate-arena') {
-    const state = getChatBridgeDebateArenaState(part.values?.chatbridgeDebateArena)
-    return state ? <DebateArenaPanel part={part} state={state} /> : null
-  }
-
-  return null
 }
