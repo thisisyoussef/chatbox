@@ -66,21 +66,48 @@ describe('weather web bridge server', () => {
             lon: -87.6244,
             state: 'Illinois',
             country: 'US',
+            local_names: {
+              en: 'Chicago',
+            },
           },
         ])
       }
 
       return jsonResponse({
+        lat: 41.8756,
+        lon: -87.6244,
         timezone: 'America/Chicago',
+        timezone_offset: -18000,
         current: {
           dt: 1_717_000_000,
           temp: 72.2,
           feels_like: 70.6,
           wind_speed: 9.1,
+          humidity: 51,
           weather: [{ id: 800, description: 'clear sky' }],
         },
-        hourly: [],
-        daily: [],
+        hourly: [
+          {
+            dt: 1_717_003_600,
+            temp: 73.1,
+            pop: 0.1,
+            humidity: 48,
+            weather: [{ id: 801, description: 'few clouds' }],
+          },
+        ],
+        daily: [
+          {
+            dt: 1_717_086_400,
+            temp: {
+              min: 61.2,
+              max: 78.4,
+              day: 74.1,
+            },
+            pop: 0.2,
+            humidity: 46,
+            weather: [{ id: 500, description: 'light rain' }],
+          },
+        ],
         alerts: [],
       })
     })
