@@ -16,14 +16,24 @@ import { WeatherDashboardPanel } from './WeatherDashboardPanel'
 
 function renderPanel(snapshot: WeatherDashboardSnapshot) {
   const onRefresh = vi.fn()
+  const onLocationDraftChange = vi.fn()
+  const onLocationSubmit = vi.fn()
 
   render(
     <MantineProvider>
-      <WeatherDashboardPanel snapshot={snapshot} refreshing={false} onRefresh={onRefresh} />
+      <WeatherDashboardPanel
+        snapshot={snapshot}
+        refreshing={false}
+        changingLocation={false}
+        locationDraft={snapshot.locationQuery ?? ''}
+        onLocationDraftChange={onLocationDraftChange}
+        onLocationSubmit={onLocationSubmit}
+        onRefresh={onRefresh}
+      />
     </MantineProvider>
   )
 
-  return { onRefresh }
+  return { onLocationDraftChange, onLocationSubmit, onRefresh }
 }
 
 describe('WeatherDashboardPanel', () => {
@@ -129,6 +139,8 @@ describe('WeatherDashboardPanel', () => {
 
     expect(screen.getByText('Chicago, Illinois, United States')).toBeTruthy()
     expect(screen.getByText(snapshot.lastUpdatedLabel)).toBeTruthy()
+    expect(screen.getByLabelText('Location')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /update location/i })).toBeTruthy()
     expect(screen.getByText('Next hours')).toBeTruthy()
     expect(screen.getByText('2 PM')).toBeTruthy()
     expect(screen.getByText('Daily outlook')).toBeTruthy()

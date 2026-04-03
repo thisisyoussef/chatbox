@@ -73,12 +73,20 @@ export function WeatherDashboardLaunchSurface({
   }, [launch.location, launch.request, part.snapshot])
 
   const [snapshot, setSnapshot] = useState<WeatherDashboardSnapshot>(initialSnapshot)
-  const [refreshing, setRefreshing] = useState(false)
+  const [locationDraft, setLocationDraft] = useState(
+    initialSnapshot.locationQuery ?? normalizeWeatherLocationHint(launch.location, launch.request) ?? ''
+  )
+  const [busyAction, setBusyAction] = useState<'refresh' | 'location' | null>(null)
   const launchRunRef = useRef<LangSmithRunHandle | null>(null)
   const lastSnapshotRef = useRef<WeatherDashboardSnapshot>(initialSnapshot)
   const bridgeSessionIdRef = useRef(part.bridgeSessionId ?? `weather-dashboard:${part.appInstanceId}:${crypto.randomUUID()}`)
   const nextSequenceRef = useRef(1)
   const initializedRef = useRef(false)
+  const latestRequestIdRef = useRef(0)
+  const activeRequestRef = useRef<{
+    key: string
+    promise: Promise<WeatherDashboardSnapshot>
+  } | null>(null)
 
   useEffect(() => {
     initializedRef.current = false
@@ -89,6 +97,7 @@ export function WeatherDashboardLaunchSurface({
   useEffect(() => {
     setSnapshot(initialSnapshot)
     lastSnapshotRef.current = initialSnapshot
+    setLocationDraft(initialSnapshot.locationQuery ?? normalizeWeatherLocationHint(launch.location, launch.request) ?? '')
   }, [initialSnapshot])
 
   async function endLaunchRun(result?: Parameters<LangSmithRunHandle['end']>[0]) {
@@ -148,31 +157,87 @@ export function WeatherDashboardLaunchSurface({
     })
   }
 
-  async function fetchSnapshot(refresh: boolean) {
-    const locationQuery = normalizeWeatherLocationHint(launch.location, launch.request)
-    const units = resolveWeatherUnits(launch.request)
-
-    if (typeof window === 'undefined' || typeof window.electronAPI?.invoke !== 'function') {
-      const fallbackSnapshot = createFallbackSnapshot(launch)
-      setSnapshot(fallbackSnapshot)
-      lastSnapshotRef.current = fallbackSnapshot
-      await persistSnapshot(fallbackSnapshot, 'fallback')
-      return fallbackSnapshot
+  function resolveActiveLocation(locationOverride?: string) {
+    const explicitLocation = locationOverride?.trim()
+    if (explicitLocation) {
+      return explicitLocation
     }
 
-    const result = (await window.electronAPI.invoke('chatbridge-weather:get-dashboard', {
-      request: launch.request,
-      location: launch.location ?? locationQuery,
-      units,
-      refresh,
-      traceParentRunId: launchRunRef.current?.runId,
-    })) as ChatBridgeWeatherDashboardResult
+    return (
+      lastSnapshotRef.current.locationQuery ??
+      normalizeWeatherLocationHint(launch.location, launch.request) ??
+      launch.location ??
+      undefined
+    )
+  }
 
-    const parsed = ChatBridgeWeatherDashboardResultSchema.parse(result)
-    setSnapshot(parsed.snapshot)
-    lastSnapshotRef.current = parsed.snapshot
-    await persistSnapshot(parsed.snapshot, refresh ? 'refresh' : 'initial')
-    return parsed.snapshot
+  function buildRequestText(locationOverride?: string) {
+    const explicitLocation = locationOverride?.trim()
+    if (explicitLocation) {
+      return `Open Weather Dashboard for ${explicitLocation} and show the forecast.`
+    }
+
+    return lastSnapshotRef.current.request ?? launch.request
+  }
+
+  async function fetchSnapshot(options: { refresh: boolean; locationOverride?: string }) {
+    const location = resolveActiveLocation(options.locationOverride)
+    const request = buildRequestText(options.locationOverride)
+    const units = lastSnapshotRef.current.units ?? resolveWeatherUnits(request)
+    const requestKey = JSON.stringify({
+      location: location ?? null,
+      units,
+      refresh: options.refresh,
+    })
+
+    if (activeRequestRef.current?.key === requestKey) {
+      return await activeRequestRef.current.promise
+    }
+
+    const requestId = ++latestRequestIdRef.current
+
+    const requestPromise = (async () => {
+      if (typeof window === 'undefined' || typeof window.electronAPI?.invoke !== 'function') {
+        const fallbackSnapshot = createFallbackSnapshot(launch)
+        if (requestId === latestRequestIdRef.current) {
+          setSnapshot(fallbackSnapshot)
+          lastSnapshotRef.current = fallbackSnapshot
+          setLocationDraft(fallbackSnapshot.locationQuery ?? location ?? '')
+          await persistSnapshot(fallbackSnapshot, 'fallback')
+        }
+        return fallbackSnapshot
+      }
+
+      const result = (await window.electronAPI.invoke('chatbridge-weather:get-dashboard', {
+        request,
+        location,
+        units,
+        refresh: options.refresh,
+        traceParentRunId: launchRunRef.current?.runId,
+      })) as ChatBridgeWeatherDashboardResult
+
+      const parsed = ChatBridgeWeatherDashboardResultSchema.parse(result)
+      if (requestId !== latestRequestIdRef.current) {
+        return parsed.snapshot
+      }
+
+      setSnapshot(parsed.snapshot)
+      lastSnapshotRef.current = parsed.snapshot
+      setLocationDraft(parsed.snapshot.locationQuery ?? location ?? '')
+      await persistSnapshot(parsed.snapshot, options.refresh ? 'refresh' : 'initial')
+      return parsed.snapshot
+    })().finally(() => {
+      if (activeRequestRef.current?.promise === requestPromise) {
+        activeRequestRef.current = null
+      }
+    })
+
+    activeRequestRef.current = {
+      key: requestKey,
+      promise: requestPromise,
+    }
+
+    return await requestPromise
   }
 
   useEffect(() => {
@@ -210,7 +275,7 @@ export function WeatherDashboardLaunchSurface({
       initializedRef.current = true
       await persistReadyState()
 
-      await fetchSnapshot(false)
+      await fetchSnapshot({ refresh: false })
       if (disposed) {
         return
       }
@@ -229,13 +294,48 @@ export function WeatherDashboardLaunchSurface({
   }, [launch.location, launch.request, launch.uiEntry, messageId, part.appId, part.appInstanceId, sessionId])
 
   const handleRefresh = async () => {
-    setRefreshing(true)
+    if (busyAction) {
+      return
+    }
+
+    setBusyAction('refresh')
     try {
-      await fetchSnapshot(true)
+      await fetchSnapshot({ refresh: true })
     } finally {
-      setRefreshing(false)
+      setBusyAction(null)
     }
   }
 
-  return <WeatherDashboardPanel snapshot={snapshot} refreshing={refreshing} onRefresh={() => void handleRefresh()} />
+  const handleLocationSubmit = async () => {
+    const trimmedLocation = locationDraft.trim()
+    if (!trimmedLocation || busyAction) {
+      return
+    }
+
+    if (trimmedLocation === resolveActiveLocation()) {
+      return
+    }
+
+    setBusyAction('location')
+    try {
+      await fetchSnapshot({
+        refresh: false,
+        locationOverride: trimmedLocation,
+      })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  return (
+    <WeatherDashboardPanel
+      snapshot={snapshot}
+      refreshing={busyAction === 'refresh'}
+      changingLocation={busyAction === 'location'}
+      locationDraft={locationDraft}
+      onLocationDraftChange={setLocationDraft}
+      onLocationSubmit={() => void handleLocationSubmit()}
+      onRefresh={() => void handleRefresh()}
+    />
+  )
 }

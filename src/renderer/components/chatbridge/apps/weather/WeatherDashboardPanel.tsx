@@ -1,4 +1,4 @@
-import { Button, Loader, Text } from '@mantine/core'
+import { Button, Loader, Text, TextInput } from '@mantine/core'
 import {
   formatWeatherAlertTime,
   formatWeatherTemperature,
@@ -9,6 +9,10 @@ import {
 interface WeatherDashboardPanelProps {
   snapshot: WeatherDashboardSnapshot
   refreshing: boolean
+  changingLocation: boolean
+  locationDraft: string
+  onLocationDraftChange: (value: string) => void
+  onLocationSubmit: () => void
   onRefresh: () => void
 }
 
@@ -70,13 +74,22 @@ const PANEL_SECTION_CLASSES =
 const DETAIL_CARD_CLASSES =
   'rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-3'
 
-export function WeatherDashboardPanel({ snapshot, refreshing, onRefresh }: WeatherDashboardPanelProps) {
+export function WeatherDashboardPanel({
+  snapshot,
+  refreshing,
+  changingLocation,
+  locationDraft,
+  onLocationDraftChange,
+  onLocationSubmit,
+  onRefresh,
+}: WeatherDashboardPanelProps) {
   const hasCurrentData = Boolean(snapshot.current)
   const hourlyItems = snapshot.hourly
   const dailyItems = snapshot.daily.length > 0 ? snapshot.daily : snapshot.forecast
   const hasHourlyData = hourlyItems.length > 0
   const hasDailyData = dailyItems.length > 0
   const hasAlerts = snapshot.alerts.length > 0
+  const controlsDisabled = refreshing || changingLocation
   const requestedLocationLabel =
     snapshot.locationQuery && snapshot.locationQuery !== snapshot.locationName
       ? `Requested as ${snapshot.locationQuery}`
@@ -113,6 +126,7 @@ export function WeatherDashboardPanel({ snapshot, refreshing, onRefresh }: Weath
                 variant={snapshot.status === 'degraded' || snapshot.status === 'unavailable' ? 'filled' : 'light'}
                 size="compact-sm"
                 loading={refreshing}
+                disabled={changingLocation}
                 onClick={onRefresh}
               >
                 Refresh weather
@@ -228,6 +242,33 @@ export function WeatherDashboardPanel({ snapshot, refreshing, onRefresh }: Weath
                   <Text size="sm" fw={700} className="mt-1 whitespace-pre-wrap text-chatbox-primary">
                     {snapshot.refreshHint}
                   </Text>
+                </div>
+                <div className={`${DETAIL_CARD_CLASSES} sm:col-span-2`}>
+                  <form
+                    className="flex flex-col gap-3 sm:flex-row sm:items-end"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      onLocationSubmit()
+                    }}
+                  >
+                    <TextInput
+                      label="Location"
+                      value={locationDraft}
+                      onChange={(event) => onLocationDraftChange(event.currentTarget.value)}
+                      placeholder="Change city or region"
+                      disabled={controlsDisabled}
+                      className="min-w-0 flex-1"
+                    />
+                    <Button
+                      type="submit"
+                      variant="default"
+                      size="compact-sm"
+                      loading={changingLocation}
+                      disabled={controlsDisabled || locationDraft.trim().length === 0}
+                    >
+                      Update location
+                    </Button>
+                  </form>
                 </div>
               </div>
             </section>

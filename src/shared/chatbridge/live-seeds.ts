@@ -2090,10 +2090,10 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
       id: 'weather-dashboard',
       name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Weather dashboard`,
       description:
-        'Seeds the reviewed Weather Dashboard launch so you can verify the host-owned weather snapshot, refresh flow, and inline continuity summary inside the normal chat shell.',
+        'Seeds the reviewed Weather Dashboard launch so you can verify the host-owned weather snapshot, refresh flow, location swap controls, and inline continuity summary inside the normal chat shell.',
       fixtureRole: 'active-flagship',
       smokeSupport: 'supported',
-      coverage: ['Weather runtime', 'Host-owned weather fetch', 'Refresh continuity'],
+      coverage: ['Weather runtime', 'Host-owned weather fetch', 'Refresh continuity', 'Location continuity'],
       auditSteps: [
         {
           action: 'Open the seeded Weather Dashboard session and wait for the initial host-owned weather snapshot to load.',
@@ -2106,9 +2106,14 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
             'The same inline dashboard remains mounted, the host status updates, and the refreshed or cached snapshot stays visible without spawning a separate receipt.',
         },
         {
+          action: 'Change the `Location` field to a different city such as `Denver` and click `Update location`.',
+          expected:
+            'The same inline dashboard stays mounted, the host snapshot swaps to the new city, and later refreshes continue from that updated location instead of the original launch request.',
+        },
+        {
           action: 'Ask a follow-up such as `Summarize the weather you just showed me.` in the same thread.',
           expected:
-            'Later chat stays grounded in the host-owned weather summary and does not invent provider details that were never rendered or normalized.',
+            'Later chat stays grounded in the latest host-owned weather summary for the active location and does not invent provider details that were never rendered or normalized.',
         },
       ],
       sessionInput: buildChatBridgeWeatherDashboardSessionFixture(),
