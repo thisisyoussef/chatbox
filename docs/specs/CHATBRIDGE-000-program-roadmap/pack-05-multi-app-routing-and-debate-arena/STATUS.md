@@ -23,6 +23,10 @@ Legacy parked packets that are not part of the active queue:
 
 - `CB-505`
 
+Planned extension packets after the rebuild queue:
+
+- `CB-511`
+
 ## Historical Story Order
 
 1. CB-501
