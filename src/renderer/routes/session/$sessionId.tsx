@@ -2,7 +2,7 @@ import NiceModal from '@ebay/nice-modal-react'
 import { Button } from '@mantine/core'
 import type { Message, ModelProvider } from '@shared/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useStore } from 'zustand'
 import MessageList, { type MessageListRef } from '@/components/chat/MessageList'
@@ -35,6 +35,8 @@ function RouteComponent() {
   const floatingShellState = useUIStore((state) => state.chatBridgeFloatingShellMap[currentSessionId])
   const setFloatingShellState = useUIStore((state) => state.setChatBridgeFloatingShellState)
   const setFloatingShellMinimized = useUIStore((state) => state.setChatBridgeFloatingShellMinimized)
+  const setFloatingShellExpanded = useUIStore((state) => state.setChatBridgeFloatingShellExpanded)
+  const setFloatingShellFrame = useUIStore((state) => state.setChatBridgeFloatingShellFrame)
   const clearFloatingShellState = useUIStore((state) => state.clearChatBridgeFloatingShellState)
 
   const currentMessageList = useMemo(() => (currentSession ? getAllMessageList(currentSession) : []), [currentSession])
@@ -48,6 +50,8 @@ function RouteComponent() {
   )
 
   const messageListRef = useRef<MessageListRef>(null)
+  const [floatingShellViewport, setFloatingShellViewport] = useState<HTMLDivElement | null>(null)
+  const [floatingShellPortal, setFloatingShellPortal] = useState<HTMLDivElement | null>(null)
 
   const goHome = useCallback(() => {
     navigate({ to: '/', replace: true })
@@ -213,18 +217,31 @@ function RouteComponent() {
       return
     }
 
+    if (floatingShellState?.appInstanceId === floatingRuntimeTarget.part.appInstanceId) {
+      setFloatingShellMinimized(currentSessionId, false)
+      return
+    }
+
     setFloatingShellState(currentSessionId, floatingRuntimeTarget.part.appInstanceId, false)
-  }, [currentSessionId, floatingRuntimeTarget, setFloatingShellState])
+  }, [currentSessionId, floatingRuntimeTarget, floatingShellState?.appInstanceId, setFloatingShellMinimized, setFloatingShellState])
 
   const floatingRuntimeShell =
     floatingRuntimeTarget &&
-    floatingShellState?.appInstanceId === floatingRuntimeTarget.part.appInstanceId ? (
+    floatingShellState?.appInstanceId === floatingRuntimeTarget.part.appInstanceId &&
+    floatingShellPortal &&
+    floatingShellViewport ? (
       <FloatingChatBridgeRuntimeShell
         sessionId={currentSessionId}
         messageId={floatingRuntimeTarget.messageId}
         part={floatingRuntimeTarget.part}
         minimized={floatingShellState.minimized}
+        expanded={floatingShellState.expanded}
+        frame={floatingShellState.frame}
+        portalTarget={floatingShellPortal}
+        viewportElement={floatingShellViewport}
         onMinimizeChange={(nextMinimized) => setFloatingShellMinimized(currentSessionId, nextMinimized)}
+        onExpandedChange={(nextExpanded) => setFloatingShellExpanded(currentSessionId, nextExpanded)}
+        onFrameChange={(nextFrame) => setFloatingShellFrame(currentSessionId, nextFrame)}
         onJumpToSource={handleJumpToFloatingRuntimeSource}
       />
     ) : null
@@ -233,7 +250,7 @@ function RouteComponent() {
     <div className="flex h-full flex-col">
       <Header session={currentSession} />
 
-      <div className="min-h-0 flex-1">
+      <div ref={setFloatingShellViewport} className="relative min-h-0 flex-1">
         {/* MessageList 设置 key，确保每个 session 对应新的 MessageList 实例 */}
         <MessageList
           ref={messageListRef}
@@ -243,6 +260,7 @@ function RouteComponent() {
           floatedChatBridgeTrayMinimized={floatingShellState?.minimized ?? false}
           onOpenFloatedChatBridgeApp={handleOpenFloatingRuntime}
         />
+        <div ref={setFloatingShellPortal} className="pointer-events-none absolute inset-0 z-20" aria-hidden="true" />
       </div>
 
       {floatingRuntimeShell}
