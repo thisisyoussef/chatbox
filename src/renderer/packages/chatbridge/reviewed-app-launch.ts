@@ -30,6 +30,7 @@ import {
 import {
   DRAWING_KIT_APP_ID,
   createDrawingKitScreenshotDataUrl,
+  createDrawingKitVisionCompositeDataUrl,
   describeDrawingKitVisibleBoard,
   parseDrawingKitAppSnapshot,
 } from '@shared/chatbridge/apps/drawing-kit'
@@ -507,7 +508,8 @@ async function createReviewedAppStateScreenshotRef(
   }
 
   const fallbackSummary = describeDrawingKitVisibleBoard(snapshot) ?? buildDrawingKitScreenshotSummary(snapshot)
-  const screenshotDataUrl = readString(event.screenshotDataUrl) ?? createDrawingKitScreenshotDataUrl(snapshot)
+  const rawScreenshotDataUrl = readString(event.screenshotDataUrl) ?? createDrawingKitScreenshotDataUrl(snapshot)
+  const screenshotDataUrl = createDrawingKitVisionCompositeDataUrl(snapshot, rawScreenshotDataUrl)
   const dependencies = await createModelDependencies()
   const storageKey = await dependencies.storage.saveImage('chatbridge-app', screenshotDataUrl)
   const summary = await describeDrawingKitScreenshot(screenshotDataUrl, fallbackSummary)

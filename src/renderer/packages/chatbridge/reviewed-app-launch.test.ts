@@ -840,6 +840,19 @@ describe('reviewed app launch adoption', () => {
           stickerCount: 1,
           checkpointId: 'drawing-kit-4200',
           lastUpdatedAt: 32_000,
+          previewMarks: [
+            {
+              kind: 'line',
+              tool: 'spray',
+              color: '#ff8a4c',
+              width: 4,
+              points: [
+                { x: 0.12, y: 0.24 },
+                { x: 0.26, y: 0.3 },
+                { x: 0.34, y: 0.42 },
+              ],
+            },
+          ],
         }),
       },
     })
@@ -857,6 +870,12 @@ describe('reviewed app launch adoption', () => {
       },
     })
     expect(vi.mocked(createModelDependencies)).toHaveBeenCalled()
-    expect(vi.mocked(describeImageData)).toHaveBeenCalledWith('data:image/png;base64,ZmFrZQ==')
+    expect(vi.mocked(describeImageData)).toHaveBeenCalledWith(expect.stringMatching(/^data:image\/svg\+xml;charset=utf-8,/))
+
+    const dependencies = await vi.mocked(createModelDependencies).mock.results.at(-1)?.value
+    expect(dependencies?.storage.saveImage).toHaveBeenCalledWith(
+      'chatbridge-app',
+      expect.stringMatching(/^data:image\/svg\+xml;charset=utf-8,/)
+    )
   })
 })

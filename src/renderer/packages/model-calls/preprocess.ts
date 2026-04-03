@@ -13,7 +13,7 @@ const OCR_PROMPT =
   'OCR the following image into Markdown. Tables should be formatted as HTML. Do not sorround your output with triple backticks.'
 
 const DRAWING_KIT_DESCRIPTION_PROMPT =
-  'Describe this drawing canvas for another assistant. Focus only on the visible drawing itself: the main subject, notable shapes, colors, placement, stickers, and anything unclear or unfinished. Be factual, concise, and specific in 2 to 4 sentences. Do not invent hidden details or mention surrounding app chrome.'
+  'Describe this drawing canvas for another assistant. If the image includes both a full-board view and a zoomed focus view, use both. Focus only on the visible drawing itself: the main subject, notable shapes, colors, placement, stickers, and anything unclear or unfinished. Be factual, concise, and specific in 2 to 4 sentences. Do not invent hidden details or mention surrounding app chrome.'
 
 async function createImageToTextModel() {
   const settings = settingsStore.getState().getSettings()
@@ -73,7 +73,15 @@ async function runImageToTextPrompt(
         type: 'text',
         text: instruction,
       },
-      { type: 'image' as const, image: imageData },
+      {
+        type: 'image' as const,
+        image: imageData,
+        providerOptions: {
+          openai: {
+            imageDetail: 'high',
+          },
+        },
+      },
     ],
   }
   const chatResult = await model.chat([msg], {

@@ -94,6 +94,7 @@ export const MessageImagePartSchema = z.object({
   type: z.literal('image'),
   storageKey: z.string(),
   ocrResult: z.string().optional(),
+  detail: z.enum(['low', 'high', 'original', 'auto']).optional(),
 })
 
 export const MessageInfoPartSchema = z.object({

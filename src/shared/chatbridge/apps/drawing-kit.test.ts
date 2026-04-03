@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampDrawingKitPreviewMarks,
+  createDrawingKitVisionCompositeDataUrl,
   createDrawingKitScreenshotDataUrl,
   createDrawingKitAppSnapshot,
   createInitialDrawingKitAppSnapshot,
@@ -87,5 +88,36 @@ describe('shared drawing kit helpers', () => {
     expect(screenshot.startsWith('data:image/svg+xml;charset=utf-8,')).toBe(true)
     expect(decodeURIComponent(screenshot.split(',')[1] ?? '')).toContain('Moon pizza')
     expect(decodeURIComponent(screenshot.split(',')[1] ?? '')).toContain('Drawing Kit')
+  })
+
+  it('builds a board-vision composite that keeps the full board and a zoomed focus crop together', () => {
+    const snapshot = createDrawingKitAppSnapshot({
+      roundLabel: 'Dare 11',
+      roundPrompt: 'Draw a moon pizza.',
+      selectedTool: 'spray',
+      status: 'drawing',
+      caption: 'Moon pizza',
+      previewMarks: [
+        {
+          kind: 'line',
+          tool: 'spray',
+          color: '#ff8a4c',
+          width: 3,
+          points: [
+            { x: 0.08, y: 0.18 },
+            { x: 0.18, y: 0.22 },
+            { x: 0.26, y: 0.3 },
+          ],
+        },
+      ],
+    })
+
+    const screenshot = createDrawingKitVisionCompositeDataUrl(snapshot, 'data:image/png;base64,ZmFrZQ==')
+
+    expect(screenshot.startsWith('data:image/svg+xml;charset=utf-8,')).toBe(true)
+    const decoded = decodeURIComponent(screenshot.split(',')[1] ?? '')
+    expect(decoded).toContain('data:image/png;base64,ZmFrZQ==')
+    expect(decoded).toContain('Moon pizza')
+    expect(decoded).toContain('View the exact board on the left and the zoomed focus crop on the right.')
   })
 })
