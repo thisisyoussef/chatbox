@@ -17,3 +17,7 @@
   the reviewed app launch contract so a resolved location opens the dashboard
   immediately, while still honoring short launch-confirmation follow-ups from
   legacy `route-ready` receipts.
+- 2026-04-03: Hardened Weather Dashboard geocoding with a provider-facing
+  fallback for US city-plus-state inputs so free-form variants like `detroit
+  michigan` and `Detroit, MI` can recover through validated city lookup before
+  surfacing `location-not-found`.

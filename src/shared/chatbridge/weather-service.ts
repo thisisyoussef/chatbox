@@ -52,6 +52,69 @@ const OPENWEATHER_FORECAST_URL = 'https://api.openweathermap.org/data/2.5/foreca
 const DEFAULT_CACHE_TTL_MS = 10 * 60 * 1000
 const DEFAULT_TIMEOUT_MS = 6_000
 
+const US_STATE_ENTRIES = [
+  { name: 'Alabama', code: 'AL' },
+  { name: 'Alaska', code: 'AK' },
+  { name: 'Arizona', code: 'AZ' },
+  { name: 'Arkansas', code: 'AR' },
+  { name: 'California', code: 'CA' },
+  { name: 'Colorado', code: 'CO' },
+  { name: 'Connecticut', code: 'CT' },
+  { name: 'Delaware', code: 'DE' },
+  { name: 'District of Columbia', code: 'DC' },
+  { name: 'Florida', code: 'FL' },
+  { name: 'Georgia', code: 'GA' },
+  { name: 'Hawaii', code: 'HI' },
+  { name: 'Idaho', code: 'ID' },
+  { name: 'Illinois', code: 'IL' },
+  { name: 'Indiana', code: 'IN' },
+  { name: 'Iowa', code: 'IA' },
+  { name: 'Kansas', code: 'KS' },
+  { name: 'Kentucky', code: 'KY' },
+  { name: 'Louisiana', code: 'LA' },
+  { name: 'Maine', code: 'ME' },
+  { name: 'Maryland', code: 'MD' },
+  { name: 'Massachusetts', code: 'MA' },
+  { name: 'Michigan', code: 'MI' },
+  { name: 'Minnesota', code: 'MN' },
+  { name: 'Mississippi', code: 'MS' },
+  { name: 'Missouri', code: 'MO' },
+  { name: 'Montana', code: 'MT' },
+  { name: 'Nebraska', code: 'NE' },
+  { name: 'Nevada', code: 'NV' },
+  { name: 'New Hampshire', code: 'NH' },
+  { name: 'New Jersey', code: 'NJ' },
+  { name: 'New Mexico', code: 'NM' },
+  { name: 'New York', code: 'NY' },
+  { name: 'North Carolina', code: 'NC' },
+  { name: 'North Dakota', code: 'ND' },
+  { name: 'Ohio', code: 'OH' },
+  { name: 'Oklahoma', code: 'OK' },
+  { name: 'Oregon', code: 'OR' },
+  { name: 'Pennsylvania', code: 'PA' },
+  { name: 'Rhode Island', code: 'RI' },
+  { name: 'South Carolina', code: 'SC' },
+  { name: 'South Dakota', code: 'SD' },
+  { name: 'Tennessee', code: 'TN' },
+  { name: 'Texas', code: 'TX' },
+  { name: 'Utah', code: 'UT' },
+  { name: 'Vermont', code: 'VT' },
+  { name: 'Virginia', code: 'VA' },
+  { name: 'Washington', code: 'WA' },
+  { name: 'West Virginia', code: 'WV' },
+  { name: 'Wisconsin', code: 'WI' },
+  { name: 'Wyoming', code: 'WY' },
+] as const
+
+const US_STATE_BY_NAME = new Map<string, (typeof US_STATE_ENTRIES)[number]>(
+  US_STATE_ENTRIES.map((entry) => [entry.name.toLowerCase(), entry])
+)
+const US_STATE_BY_CODE = new Map<string, (typeof US_STATE_ENTRIES)[number]>(
+  US_STATE_ENTRIES.map((entry) => [entry.code, entry])
+)
+const US_STATE_ENTRIES_BY_LENGTH = [...US_STATE_ENTRIES].sort((left, right) => right.name.length - left.name.length)
+const US_COUNTRY_TOKENS = new Set(['us', 'usa', 'united states', 'united states of america'])
+
 const OpenWeatherGeocodeResponseSchema = z.array(
   z
     .object({
@@ -107,6 +170,18 @@ const OpenWeatherForecastListItemSchema = z
 
 type OpenWeatherForecastListItem = z.infer<typeof OpenWeatherForecastListItemSchema>
 
+type GeocodeLookupStrategy = {
+  query: string
+  limit: number
+  expectedState?: string
+}
+
+type UsStatefulLocation = {
+  city: string
+  stateName: string
+  stateCode: string
+}
+
 const OpenWeatherForecastResponseSchema = z
   .object({
     list: z.array(OpenWeatherForecastListItemSchema).default([]),
@@ -134,6 +209,151 @@ function createCacheKey(location: string, units: ReturnType<typeof resolveWeathe
 
 function composeLocationName(location: OpenWeatherGeocodeResult) {
   return [location.name, location.state, location.country].filter(Boolean).join(', ')
+}
+
+function normalizeLocationText(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function normalizeLocationToken(value: string) {
+  return normalizeLocationText(value).replace(/\./g, '').toLowerCase()
+}
+
+function stripTrailingUsCountryToken(value: string) {
+  const normalized = normalizeLocationText(value)
+  if (!normalized) {
+    return normalized
+  }
+
+  const commaParts = normalized.split(',').map((part) => normalizeLocationText(part)).filter(Boolean)
+  const trailingPart = commaParts.at(-1)
+  if (commaParts.length > 1 && trailingPart && US_COUNTRY_TOKENS.has(normalizeLocationToken(trailingPart))) {
+    return commaParts.slice(0, -1).join(', ')
+  }
+
+  const trailingCountryMatch = /^(.*?)(?:\s+)(us|usa|united states|united states of america)$/i.exec(normalized)
+  if (trailingCountryMatch?.[1]) {
+    return normalizeLocationText(trailingCountryMatch[1])
+  }
+
+  return normalized
+}
+
+function resolveUsStateReference(value: string) {
+  const normalized = normalizeLocationToken(value)
+  if (!normalized) {
+    return null
+  }
+
+  const nameMatch = US_STATE_BY_NAME.get(normalized)
+  if (nameMatch) {
+    return nameMatch
+  }
+
+  if (normalized.length === 2) {
+    return US_STATE_BY_CODE.get(normalized.toUpperCase()) ?? null
+  }
+
+  return null
+}
+
+function parseUsStatefulLocation(locationHint: string): UsStatefulLocation | null {
+  const normalized = stripTrailingUsCountryToken(locationHint)
+  if (!normalized) {
+    return null
+  }
+
+  const commaParts = normalized.split(',').map((part) => normalizeLocationText(part)).filter(Boolean)
+  if (commaParts.length >= 2) {
+    const state = resolveUsStateReference(commaParts[1] ?? '')
+    if (state && commaParts[0]) {
+      return {
+        city: commaParts[0],
+        stateName: state.name,
+        stateCode: state.code,
+      }
+    }
+  }
+
+  const codeMatch = /^(.*?)(?:\s+)([A-Za-z]{2})$/.exec(normalized)
+  if (codeMatch?.[1] && codeMatch[2]) {
+    const state = resolveUsStateReference(codeMatch[2])
+    if (state) {
+      return {
+        city: normalizeLocationText(codeMatch[1]),
+        stateName: state.name,
+        stateCode: state.code,
+      }
+    }
+  }
+
+  const normalizedLower = normalized.toLowerCase()
+  for (const state of US_STATE_ENTRIES_BY_LENGTH) {
+    const stateNameLower = state.name.toLowerCase()
+    if (!normalizedLower.endsWith(` ${stateNameLower}`)) {
+      continue
+    }
+
+    const city = normalizeLocationText(normalized.slice(0, normalized.length - state.name.length))
+    if (!city) {
+      continue
+    }
+
+    return {
+      city,
+      stateName: state.name,
+      stateCode: state.code,
+    }
+  }
+
+  return null
+}
+
+function buildGeocodeLookupStrategies(locationHint: string): GeocodeLookupStrategy[] {
+  const strategies = new Map<string, GeocodeLookupStrategy>()
+
+  const addStrategy = (strategy: GeocodeLookupStrategy) => {
+    const query = normalizeLocationText(strategy.query)
+    if (!query) {
+      return
+    }
+
+    const key = `${query.toLowerCase()}::${strategy.limit}::${strategy.expectedState ?? ''}`
+    if (strategies.has(key)) {
+      return
+    }
+
+    strategies.set(key, {
+      ...strategy,
+      query,
+    })
+  }
+
+  addStrategy({
+    query: locationHint,
+    limit: 1,
+  })
+
+  const statefulLocation = parseUsStatefulLocation(locationHint)
+  if (statefulLocation) {
+    addStrategy({
+      query: `${statefulLocation.city}, ${statefulLocation.stateCode}`,
+      limit: 5,
+      expectedState: statefulLocation.stateName,
+    })
+    addStrategy({
+      query: `${statefulLocation.city}, ${statefulLocation.stateName}`,
+      limit: 5,
+      expectedState: statefulLocation.stateName,
+    })
+    addStrategy({
+      query: statefulLocation.city,
+      limit: 5,
+      expectedState: statefulLocation.stateName,
+    })
+  }
+
+  return [...strategies.values()]
 }
 
 function normalizeCountryName(country?: string) {
@@ -197,13 +417,24 @@ async function fetchJson(fetchImpl: FetchLike, url: string, timeoutMs = DEFAULT_
   }
 }
 
-function normalizeGeocodeResult(payload: unknown) {
+function createGeocodeSearch(apiKey: string, strategy: GeocodeLookupStrategy) {
+  const geocodeSearch = new URL(OPENWEATHER_GEOCODE_URL)
+  geocodeSearch.searchParams.set('q', strategy.query)
+  geocodeSearch.searchParams.set('limit', String(strategy.limit))
+  geocodeSearch.searchParams.set('appid', apiKey)
+  return geocodeSearch
+}
+
+function normalizeGeocodeResult(payload: unknown, options: { expectedState?: string } = {}) {
   const parsed = OpenWeatherGeocodeResponseSchema.safeParse(payload)
   if (!parsed.success) {
     throw new WeatherGatewayError('invalid-response', 'Weather location lookup returned an invalid response shape.')
   }
 
-  const result = parsed.data[0]
+  const result =
+    options.expectedState
+      ? parsed.data.find((candidate) => resolveUsStateReference(candidate.state ?? '')?.name === options.expectedState)
+      : parsed.data[0]
   if (!result) {
     return null
   }
@@ -576,10 +807,7 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
     }
 
     try {
-      const geocodeSearch = new URL(OPENWEATHER_GEOCODE_URL)
-      geocodeSearch.searchParams.set('q', locationHint)
-      geocodeSearch.searchParams.set('limit', '1')
-      geocodeSearch.searchParams.set('appid', apiKey)
+      const geocodeStrategies = buildGeocodeLookupStrategies(locationHint)
 
       await trace('chatbridge.weather.fetch.started', {
         parentRunId: query.traceParentRunId,
@@ -590,8 +818,25 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
         },
       })
 
-      const geocodePayload = await fetchJson(fetchImpl, geocodeSearch.toString())
-      const resolvedLocation = normalizeGeocodeResult(geocodePayload)
+      let resolvedLocation: OpenWeatherGeocodeResult | null = null
+      let resolvedGeocodeQuery = geocodeStrategies[0]?.query ?? locationHint
+
+      // Retry stricter US city/state queries with safer variants before surfacing
+      // a host-side location-not-found state to the runtime.
+      for (const strategy of geocodeStrategies) {
+        const geocodePayload = await fetchJson(fetchImpl, createGeocodeSearch(apiKey, strategy).toString())
+        const candidate = normalizeGeocodeResult(geocodePayload, {
+          expectedState: strategy.expectedState,
+        })
+
+        if (!candidate) {
+          continue
+        }
+
+        resolvedLocation = candidate
+        resolvedGeocodeQuery = strategy.query
+        break
+      }
 
       if (!resolvedLocation) {
         const snapshot = createWeatherDashboardUnavailableSnapshot({
@@ -606,6 +851,7 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
           outputs: {
             status: snapshot.status,
             location: locationHint,
+            attemptedGeocodeQueries: geocodeStrategies.map((strategy) => strategy.query),
           },
         })
         return ChatBridgeWeatherDashboardResultSchema.parse({ snapshot })
@@ -664,6 +910,7 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
           hourlyPoints: snapshot.hourly.length,
           alertCount: snapshot.alerts.length,
           status: snapshot.status,
+          geocodeQuery: resolvedGeocodeQuery,
         },
       })
 

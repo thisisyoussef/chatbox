@@ -185,6 +185,129 @@ describe('chatbridge weather service', () => {
     expect(requestedUrls[2]).toContain('lang=en')
   })
 
+  it('recovers a free-form US city and state query with a state-aware geocode fallback', async () => {
+    const geocodeQueries: string[] = []
+    const fetchMock = vi.fn(async (url: string) => {
+      const requestUrl = new URL(url)
+
+      if (requestUrl.pathname === '/geo/1.0/direct') {
+        const geocodeQuery = requestUrl.searchParams.get('q') ?? ''
+        geocodeQueries.push(geocodeQuery)
+
+        if (geocodeQuery.toLowerCase() === 'detroit') {
+          return jsonResponse([
+            {
+              name: 'Detroit',
+              lat: 42.3314,
+              lon: -83.0458,
+              state: 'Michigan',
+              country: 'US',
+            },
+          ])
+        }
+
+        return jsonResponse([])
+      }
+
+      if (requestUrl.pathname === '/data/2.5/weather') {
+        return jsonResponse(
+          createCurrentWeather({
+            timezone: -14_400,
+            weather: [{ id: 803, description: 'broken clouds' }],
+          })
+        )
+      }
+
+      return jsonResponse(createForecastResponse({ timezoneOffsetSeconds: -14_400 }))
+    })
+
+    const service = createChatBridgeWeatherService({
+      fetch: fetchMock as typeof fetch,
+      now: () => 1_717_000_000_000,
+      apiKey: 'test-key',
+    })
+
+    const result = await service.fetchDashboard({
+      request: 'Open Weather Dashboard for detroit michigan and show the forecast.',
+      location: 'detroit michigan',
+      refresh: true,
+    })
+
+    expect(result.snapshot).toMatchObject({
+      status: 'ready',
+      locationQuery: 'detroit michigan',
+      locationName: 'Detroit, Michigan, United States',
+      timezone: '-04:00',
+      cacheStatus: 'refreshed',
+    })
+    expect(geocodeQueries.map((query) => query.toLowerCase())).toEqual([
+      'detroit michigan',
+      'detroit, mi',
+      'detroit, michigan',
+      'detroit',
+    ])
+    expect(fetchMock).toHaveBeenCalledTimes(6)
+  })
+
+  it('recovers a comma-delimited US state abbreviation with the same state-aware geocode fallback', async () => {
+    const geocodeQueries: string[] = []
+    const fetchMock = vi.fn(async (url: string) => {
+      const requestUrl = new URL(url)
+
+      if (requestUrl.pathname === '/geo/1.0/direct') {
+        const geocodeQuery = requestUrl.searchParams.get('q') ?? ''
+        geocodeQueries.push(geocodeQuery)
+
+        if (geocodeQuery.toLowerCase() === 'detroit') {
+          return jsonResponse([
+            {
+              name: 'Detroit',
+              lat: 42.3314,
+              lon: -83.0458,
+              state: 'Michigan',
+              country: 'US',
+            },
+          ])
+        }
+
+        return jsonResponse([])
+      }
+
+      if (requestUrl.pathname === '/data/2.5/weather') {
+        return jsonResponse(
+          createCurrentWeather({
+            timezone: -14_400,
+            weather: [{ id: 803, description: 'broken clouds' }],
+          })
+        )
+      }
+
+      return jsonResponse(createForecastResponse({ timezoneOffsetSeconds: -14_400 }))
+    })
+
+    const service = createChatBridgeWeatherService({
+      fetch: fetchMock as typeof fetch,
+      now: () => 1_717_000_000_000,
+      apiKey: 'test-key',
+    })
+
+    const result = await service.fetchDashboard({
+      request: 'Open Weather Dashboard for Detroit, MI and show the forecast.',
+      location: 'Detroit, MI',
+      refresh: true,
+    })
+
+    expect(result.snapshot).toMatchObject({
+      status: 'ready',
+      locationQuery: 'Detroit, MI',
+      locationName: 'Detroit, Michigan, United States',
+      timezone: '-04:00',
+      cacheStatus: 'refreshed',
+    })
+    expect(geocodeQueries.map((query) => query.toLowerCase())).toContain('detroit')
+    expect(fetchMock).toHaveBeenCalledTimes(6)
+  })
+
   it('returns a cache hit on repeated requests without a second upstream fetch', async () => {
     const { adapter, events } = createTraceAdapter()
     const fetchMock = vi.fn(async (url: string) => {
