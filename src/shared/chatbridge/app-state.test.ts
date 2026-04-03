@@ -50,6 +50,21 @@ describe('chatbridge app state helpers', () => {
           status: 'checkpointed',
           caption: 'Moon pizza',
         }),
+        values: {
+          chatbridgeAppMedia: {
+            screenshots: [
+              {
+                kind: 'app-screenshot',
+                appId: 'drawing-kit',
+                appInstanceId: 'instance-1',
+                storageKey: 'shot-1',
+                capturedAt: 1,
+                summary: 'A round moon pizza with uneven slices and two star stickers near the crust.',
+                source: 'runtime-captured',
+              },
+            ],
+          },
+        },
       })
     )
 
@@ -58,6 +73,9 @@ describe('chatbridge app state helpers', () => {
     })
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Prompt: Draw a moon pizza.')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Tool: spray')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain(
+      'Visible board: A round moon pizza with uneven slices and two star stickers near the crust.'
+    )
   })
 
   it('stores only the latest bounded set of app-linked screenshots', () => {

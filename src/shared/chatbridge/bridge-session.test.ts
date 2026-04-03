@@ -108,6 +108,26 @@ describe('bridge-session validation', () => {
     expect(stateUpdate.session.acceptedIdempotencyKeys.has('state-2')).toBe(true)
   })
 
+  it('accepts runtime-captured screenshot payloads on app.state events', () => {
+    const parsed = BridgeAppEventSchema.parse({
+      kind: 'app.state',
+      bridgeSessionId: 'bridge-session-1',
+      appInstanceId: 'app-instance-1',
+      bridgeToken: 'bridge-token-1',
+      sequence: 2,
+      idempotencyKey: 'state-2',
+      snapshot: {
+        status: 'drawing',
+      },
+      screenshotDataUrl: 'data:image/png;base64,ZmFrZQ==',
+    })
+
+    expect(parsed.kind).toBe('app.state')
+    if (parsed.kind === 'app.state') {
+      expect(parsed.screenshotDataUrl).toBe('data:image/png;base64,ZmFrZQ==')
+    }
+  })
+
   it('rejects ready acknowledgements with the wrong bootstrap nonce', () => {
     const { session } = createBridgeSession(
       {

@@ -31,6 +31,7 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
   const controllerRef = useRef<ReturnType<typeof createBridgeHostController> | null>(null)
   const launchRunRef = useRef<LangSmithRunHandle | null>(null)
   const launchRunFinishedRef = useRef(false)
+  const persistenceQueueRef = useRef(Promise.resolve())
   const launch = readChatBridgeReviewedAppLaunch(part.values)
   const isWeatherDashboard = part.appId === WEATHER_DASHBOARD_APP_ID
 
@@ -44,6 +45,17 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
 
   const expectedOrigin = useMemo(() => window.location.origin || 'null', [])
   const bootstrapTargetOrigin = '*'
+
+  function enqueuePersistence(task: () => Promise<void>) {
+    persistenceQueueRef.current = persistenceQueueRef.current
+      .catch(() => undefined)
+      .then(task)
+      .catch((error) => {
+        console.error('Failed to persist reviewed app launch lifecycle event:', error)
+      })
+
+    return persistenceQueueRef.current
+  }
 
   async function finishLaunchRun(result?: Parameters<LangSmithRunHandle['end']>[0]) {
     if (!launchRunRef.current || launchRunFinishedRef.current) {
@@ -216,28 +228,32 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
         traceAdapter: langsmith,
         traceParentRunId,
         onReady: (event) => {
-          void persistReady(event)
+          void enqueuePersistence(() => persistReady(event))
         },
         onAcceptedAppEvent: (event) => {
-          void persistAcceptedEvent(event)
-          if (event.kind === 'app.state') {
-            void finishLaunchRun({
-              outputs: {
-                status: 'active',
-                appId: part.appId,
-                appInstanceId: part.appInstanceId,
-                bridgeSessionId: event.bridgeSessionId,
-              },
-            })
-          }
+          void enqueuePersistence(async () => {
+            await persistAcceptedEvent(event)
+            if (event.kind === 'app.state') {
+              await finishLaunchRun({
+                outputs: {
+                  status: 'active',
+                  appId: part.appId,
+                  appInstanceId: part.appInstanceId,
+                  bridgeSessionId: event.bridgeSessionId,
+                },
+              })
+            }
+          })
         },
         onRecoveryDecision: (contract) => {
-          void persistRecovery(contract)
-          void finishLaunchRun({
-            error: contract.summary,
-            metadata: {
-              traceCode: contract.observability.traceCode,
-            },
+          void enqueuePersistence(async () => {
+            await persistRecovery(contract)
+            await finishLaunchRun({
+              error: contract.summary,
+              metadata: {
+                traceCode: contract.observability.traceCode,
+              },
+            })
           })
         },
       })

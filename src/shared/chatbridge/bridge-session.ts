@@ -63,6 +63,7 @@ export const BridgeAppStateEventSchema = BridgeAppEventBaseSchema.extend({
   kind: z.literal('app.state'),
   idempotencyKey: z.string().min(1),
   snapshot: z.record(z.string(), z.unknown()).optional(),
+  screenshotDataUrl: z.string().trim().min(1).optional(),
 })
 
 export const BridgeAppCompleteEventSchema = BridgeAppEventBaseSchema.extend({

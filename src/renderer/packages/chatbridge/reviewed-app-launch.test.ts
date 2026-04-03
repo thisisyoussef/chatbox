@@ -4,6 +4,32 @@
 
 import '../../../../test/integration/chatbridge/setup'
 
+import { createModelDependencies } from '@/adapters'
+import { describeImageData } from '../model-calls/preprocess'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+let persistedSession: unknown = null
+
+vi.mock('@/adapters', () => ({
+  createModelDependencies: vi.fn(async () => ({
+    storage: {
+      saveImage: vi.fn(async () => 'storage://drawing-runtime-shot-1'),
+      getImage: vi.fn(async () => ''),
+    },
+  })),
+}))
+
+vi.mock('../model-calls/preprocess', () => ({
+  describeImageData: vi.fn(async () => 'A lopsided sandwich stack with three pickle layers and a llama sticker near the corner.'),
+}))
+
+vi.mock('@/stores/chatStore', () => ({
+  updateSessionWithMessages: vi.fn(async (_sessionId: string, updater: (session: unknown) => unknown) => {
+    persistedSession = updater(persistedSession)
+    return persistedSession
+  }),
+}))
+
 import {
   createChatBridgeRuntimeCrashRecoveryContract,
   createDrawingKitAppSnapshot,
@@ -20,15 +46,29 @@ import type { BridgeAppEvent, BridgeReadyEvent } from '@shared/chatbridge/bridge
 import { CHATBRIDGE_HOST_TOOL_SCHEMA_VERSION } from '@shared/chatbridge/tools'
 import { createMessage, type MessageAppPart, type MessageToolCallPart, type Session } from '@shared/types'
 import { Chess } from 'chess.js'
-import { describe, expect, it } from 'vitest'
 import {
   applyReviewedAppLaunchBootstrapToSession,
   applyReviewedAppLaunchBridgeEventToSession,
   applyReviewedAppLaunchBridgeReadyToSession,
   applyReviewedAppLaunchRecoveryToSession,
+  persistReviewedAppLaunchBridgeEvent,
   readChatBridgeReviewedAppLaunch,
   upsertReviewedAppLaunchParts,
 } from './reviewed-app-launch'
+
+beforeEach(() => {
+  persistedSession = null
+  vi.clearAllMocks()
+  vi.mocked(createModelDependencies).mockResolvedValue({
+    storage: {
+      saveImage: vi.fn(async () => 'storage://drawing-runtime-shot-1'),
+      getImage: vi.fn(async () => ''),
+    },
+  } as never)
+  vi.mocked(describeImageData).mockResolvedValue(
+    'A lopsided sandwich stack with three pickle layers and a llama sticker near the corner.'
+  )
+})
 
 function createChessToolCallPart(): MessageToolCallPart {
   return {
@@ -732,5 +772,91 @@ describe('reviewed app launch adoption', () => {
       'state.updated',
       'completion.recorded',
     ])
+  })
+
+  it('stores runtime-captured board screenshots and vision descriptions for Drawing Kit state events', async () => {
+    const assistantMessage = createMessage('assistant')
+    assistantMessage.id = 'assistant-reviewed-launch-drawing-runtime-1'
+    assistantMessage.contentParts = upsertReviewedAppLaunchParts([createDrawingKitLaunchToolCallPart()])
+
+    const launchPart = assistantMessage.contentParts.find((part): part is MessageAppPart => part.type === 'app')
+    if (!launchPart) {
+      throw new Error('Expected a reviewed Drawing Kit launch part.')
+    }
+
+    const session: Session = {
+      id: 'session-reviewed-launch-drawing-runtime-1',
+      name: 'Reviewed Drawing runtime session',
+      messages: [assistantMessage],
+      settings: {},
+    }
+
+    const bootstrapped = applyReviewedAppLaunchBootstrapToSession(session, {
+      messageId: 'assistant-reviewed-launch-drawing-runtime-1',
+      part: launchPart,
+      bridgeSessionId: 'bridge-session-reviewed-drawing-runtime-1',
+      now: () => 30_000,
+      createId: () => 'event-created-reviewed-drawing-runtime-1',
+    })
+
+    const readied = applyReviewedAppLaunchBridgeReadyToSession(bootstrapped, {
+      messageId: 'assistant-reviewed-launch-drawing-runtime-1',
+      part: getLaunchPart(bootstrapped, 'assistant-reviewed-launch-drawing-runtime-1'),
+      event: {
+        kind: 'app.ready',
+        bridgeSessionId: 'bridge-session-reviewed-drawing-runtime-1',
+        appInstanceId: 'reviewed-launch:tool-reviewed-launch-drawing-1',
+        bridgeToken: 'bridge-token-reviewed-drawing-runtime-1',
+        ackNonce: 'bridge-nonce-reviewed-drawing-runtime-1',
+        sequence: 1,
+      },
+      now: () => 31_000,
+      createId: () => 'event-ready-reviewed-drawing-runtime-1',
+    })
+
+    persistedSession = readied
+
+    const nextSession = await persistReviewedAppLaunchBridgeEvent({
+      sessionId: 'session-reviewed-launch-drawing-runtime-1',
+      messageId: 'assistant-reviewed-launch-drawing-runtime-1',
+      part: getLaunchPart(readied, 'assistant-reviewed-launch-drawing-runtime-1'),
+      event: {
+        kind: 'app.state',
+        bridgeSessionId: 'bridge-session-reviewed-drawing-runtime-1',
+        appInstanceId: 'reviewed-launch:tool-reviewed-launch-drawing-1',
+        bridgeToken: 'bridge-token-reviewed-drawing-runtime-1',
+        sequence: 2,
+        idempotencyKey: 'state-reviewed-drawing-runtime-2',
+        screenshotDataUrl: 'data:image/png;base64,ZmFrZQ==',
+        snapshot: createDrawingKitAppSnapshot({
+          request: 'Open Drawing Kit and start a sticky-note doodle dare.',
+          roundLabel: 'Dare 05',
+          roundPrompt: 'Draw the weirdest sandwich.',
+          rewardLabel: 'Llama sticker',
+          caption: 'Triple pickle sandwich',
+          selectedTool: 'spray',
+          status: 'drawing',
+          strokeCount: 6,
+          stickerCount: 1,
+          checkpointId: 'drawing-kit-4200',
+          lastUpdatedAt: 32_000,
+        }),
+      },
+    })
+
+    const activePart = getLaunchPart(nextSession, 'assistant-reviewed-launch-drawing-runtime-1')
+    expect(activePart.values).toMatchObject({
+      chatbridgeAppMedia: {
+        screenshots: [
+          {
+            storageKey: 'storage://drawing-runtime-shot-1',
+            summary: 'A lopsided sandwich stack with three pickle layers and a llama sticker near the corner.',
+            source: 'runtime-captured',
+          },
+        ],
+      },
+    })
+    expect(vi.mocked(createModelDependencies)).toHaveBeenCalled()
+    expect(vi.mocked(describeImageData)).toHaveBeenCalledWith('data:image/png;base64,ZmFrZQ==')
   })
 })
