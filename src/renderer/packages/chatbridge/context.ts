@@ -7,6 +7,7 @@ import {
   formatChatBridgeAppStateDigest,
   describeChatBridgeAppScreenshot,
 } from '@shared/chatbridge/app-state'
+import { DRAWING_KIT_APP_ID } from '@shared/chatbridge/apps/drawing-kit'
 
 export const CHATBRIDGE_APP_CONTEXT_MESSAGE_PREFIX = 'chatbridge-app-context:'
 export const CHATBRIDGE_APP_VISION_CONTEXT_MESSAGE_PREFIX = 'chatbridge-app-vision-context:'
@@ -109,11 +110,15 @@ function createInjectedAppVisionContextMessage(selection: ChatBridgeSelectedAppC
           `Lifecycle: ${lifecycleLabel}\n` +
           `Summary: ${selection.summaryForModel}` +
           (screenshotDescription ? `\nScreenshot note: ${screenshotDescription}` : '') +
+          (selection.appId === DRAWING_KIT_APP_ID
+            ? '\nThe attached image keeps the exact board view and a zoomed focus crop together for sparse drawing inspection.'
+            : '') +
           `\nUse the image only when the user's follow-up depends on the exact visible app state. Do not infer anything outside this screenshot.`,
       },
       {
         type: 'image',
         storageKey: screenshot.storageKey,
+        detail: 'high',
       },
     ],
   }

@@ -479,14 +479,9 @@ export function FloatingChatBridgeRuntimeShell({
           {isDrawingKit ? (
             <>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <Text size="sm" fw={700} className="truncate text-chatbox-primary">
-                    {appTitle}
-                  </Text>
-                  <Text size="xs" c="dimmed" className="truncate">
-                    Board-first overlay
-                  </Text>
-                </div>
+                <Text size="sm" fw={700} className="truncate text-chatbox-primary">
+                  {appTitle}
+                </Text>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {!expanded ? (

@@ -301,6 +301,7 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
       html, body {
         margin: 0;
         padding: 0;
+        height: 100%;
         min-height: 100%;
         background:
           radial-gradient(circle at top left, rgba(255, 209, 102, 0.45), transparent 35%),
@@ -309,8 +310,9 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
       }
 
       body {
-        padding: 18px;
+        padding: 12px;
         box-sizing: border-box;
+        overflow: hidden;
       }
 
       button,
@@ -330,7 +332,8 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
       }
 
       #reviewed-app-runtime-root {
-        width: min(100%, 960px);
+        width: 100%;
+        height: 100%;
         margin: 0 auto;
       }
 
@@ -339,12 +342,16 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
         border-radius: 28px;
         background: rgba(255, 253, 244, 0.97);
         box-shadow: 0 24px 60px rgba(157, 113, 18, 0.12);
-        padding: 18px;
+        box-sizing: border-box;
+        height: 100%;
+        padding: 14px;
       }
 
       .runtime-stack {
         display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
         gap: 12px;
+        height: 100%;
       }
 
       .runtime-round-strip,
@@ -574,6 +581,8 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
         border: 1px dashed #f0c36a;
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 249, 232, 0.96));
         overflow: hidden;
+        flex: 1 1 auto;
+        min-height: 320px;
       }
 
       .runtime-board-card {
@@ -582,6 +591,9 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
         border: 1px solid var(--paper-edge);
         background: #fffdf4;
         padding: 14px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
       }
 
       .runtime-board-footer {
@@ -613,7 +625,8 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
       canvas {
         display: block;
         width: 100%;
-        height: 360px;
+        height: 100%;
+        min-height: 320px;
         cursor: crosshair;
         border: 0;
         background: transparent;
@@ -725,11 +738,12 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
         }
 
         .doodle-shell {
-          padding: 14px;
+          padding: 12px;
         }
 
+        .runtime-canvas-frame,
         canvas {
-          height: 300px;
+          min-height: 260px;
         }
       }
     </style>
@@ -1066,16 +1080,24 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
 
           const frame = canvas.parentElement;
           const width = Math.max(320, frame ? Math.floor(frame.clientWidth) : 720);
-          const height = 360;
-          canvas.width = width;
-          canvas.height = height;
+          const height = Math.max(320, frame ? Math.floor(frame.clientHeight) : 420);
+          const scale = Math.max(window.devicePixelRatio || 1, 1);
+          const pixelWidth = Math.max(1, Math.floor(width * scale));
+          const pixelHeight = Math.max(1, Math.floor(height * scale));
+
+          canvas.style.width = width + 'px';
+          canvas.style.height = height + 'px';
+          canvas.width = pixelWidth;
+          canvas.height = pixelHeight;
 
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             return;
           }
 
-          ctx.clearRect(0, 0, width, height);
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, pixelWidth, pixelHeight);
+          ctx.setTransform(scale, 0, 0, scale, 0, 0);
           paintCanvasBackground(ctx, width, height);
 
           state.marks.forEach((mark) => {

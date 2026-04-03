@@ -77,9 +77,9 @@ describe('floating shell layout', () => {
 
   it('uses a larger default frame for Drawing Kit so the board is usable without immediate resizing', () => {
     expect(getDefaultFloatingShellFrame(viewport, DRAWING_KIT_APP_ID)).toEqual({
-      x: 76,
+      x: 24,
       y: 24,
-      width: 860,
+      width: 912,
       height: 672,
     })
   })
@@ -97,10 +97,10 @@ describe('floating shell layout', () => {
         DRAWING_KIT_APP_ID
       )
     ).toEqual({
-      x: 216,
-      y: 24,
-      width: 720,
-      height: 672,
+      x: 176,
+      y: 56,
+      width: 760,
+      height: 640,
     })
   })
 

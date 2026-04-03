@@ -41,6 +41,15 @@ async function convertContentParts<T extends TextPart | ImagePart | FilePart>(
                 type: 'image',
                 image: base64Data,
                 mediaType,
+                ...(c.detail
+                  ? {
+                      providerOptions: {
+                        openai: {
+                          imageDetail: c.detail,
+                        },
+                      },
+                    }
+                  : {}),
               } as T
             } else {
               return {

@@ -276,4 +276,46 @@ describe('convertToModelMessages chatbridge normalization', () => {
       'Visible board: A round moon pizza with orange spray shading and two small stickers near the top edge.'
     )
   })
+
+  it('propagates explicit image detail hints for user-side vision context images', async () => {
+    vi.mocked(createModelDependencies).mockResolvedValue({
+      storage: {
+        getImage: vi.fn(async () => 'data:image/png;base64,ZmFrZQ=='),
+      },
+    } as never)
+
+    const messages: Message[] = [
+      {
+        id: 'msg-user-vision-detail',
+        role: 'user',
+        contentParts: [
+          {
+            type: 'image',
+            storageKey: 'storage://drawing-shot-vision',
+            detail: 'high',
+          },
+        ],
+      },
+    ]
+
+    const result = await convertToModelMessages(messages, { modelSupportVision: true })
+
+    expect(result).toEqual([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            image: 'ZmFrZQ==',
+            mediaType: 'image/png',
+            providerOptions: {
+              openai: {
+                imageDetail: 'high',
+              },
+            },
+          },
+        ],
+      },
+    ])
+  })
 })

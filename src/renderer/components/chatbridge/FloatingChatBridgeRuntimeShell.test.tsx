@@ -222,10 +222,10 @@ describe('FloatingChatBridgeRuntimeShell', () => {
     )
 
     expect(onFrameChange).toHaveBeenCalledWith({
-      x: 216,
-      y: 24,
-      width: 720,
-      height: 672,
+      x: 176,
+      y: 56,
+      width: 760,
+      height: 640,
     })
   })
 
@@ -250,7 +250,7 @@ describe('FloatingChatBridgeRuntimeShell', () => {
       </MantineProvider>
     )
 
-    expect(screen.getByText('Board-first overlay')).toBeTruthy()
+    expect(screen.getByText('Drawing Kit')).toBeTruthy()
     expect(screen.queryByText('Floating app')).toBeNull()
   })
 })

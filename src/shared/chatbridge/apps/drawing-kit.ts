@@ -572,6 +572,125 @@ export function bankDrawingKitSnapshot(
     lastUpdatedAt: options.lastUpdatedAt,
   })
 }
+
+type DrawingKitBounds = {
+  xMin: number
+  yMin: number
+  xMax: number
+  yMax: number
+}
+
+function clampBounds(bounds: DrawingKitBounds): DrawingKitBounds {
+  return {
+    xMin: clampPoint(bounds.xMin),
+    yMin: clampPoint(bounds.yMin),
+    xMax: clampPoint(bounds.xMax),
+    yMax: clampPoint(bounds.yMax),
+  }
+}
+
+function unionBounds(left: DrawingKitBounds | null, right: DrawingKitBounds | null): DrawingKitBounds | null {
+  if (!left) {
+    return right
+  }
+  if (!right) {
+    return left
+  }
+
+  return {
+    xMin: Math.min(left.xMin, right.xMin),
+    yMin: Math.min(left.yMin, right.yMin),
+    xMax: Math.max(left.xMax, right.xMax),
+    yMax: Math.max(left.yMax, right.yMax),
+  }
+}
+
+function getDrawingKitMarkBounds(mark: DrawingKitPreviewMark): DrawingKitBounds {
+  if (mark.kind === 'line') {
+    const xs = mark.points.map((point) => point.x)
+    const ys = mark.points.map((point) => point.y)
+    const pixelPadding = mark.tool === 'spray' ? 20 : Math.max(mark.width * 1.5, 8)
+    const normalizedPadding = pixelPadding / 360
+
+    return clampBounds({
+      xMin: Math.min(...xs) - normalizedPadding,
+      yMin: Math.min(...ys) - normalizedPadding,
+      xMax: Math.max(...xs) + normalizedPadding,
+      yMax: Math.max(...ys) + normalizedPadding,
+    })
+  }
+
+  const normalizedRadius = Math.max(mark.size / 360, 0.035)
+  return clampBounds({
+    xMin: mark.x - normalizedRadius,
+    yMin: mark.y - normalizedRadius,
+    xMax: mark.x + normalizedRadius,
+    yMax: mark.y + normalizedRadius,
+  })
+}
+
+function addBoundsPadding(bounds: DrawingKitBounds, padding: number): DrawingKitBounds {
+  return clampBounds({
+    xMin: bounds.xMin - padding,
+    yMin: bounds.yMin - padding,
+    xMax: bounds.xMax + padding,
+    yMax: bounds.yMax + padding,
+  })
+}
+
+function getDrawingKitFocusBounds(snapshot: DrawingKitAppSnapshot): DrawingKitBounds | null {
+  const marks = clampDrawingKitPreviewMarks(snapshot.previewMarks)
+  const union = marks.reduce<DrawingKitBounds | null>(
+    (accumulator, mark) => unionBounds(accumulator, getDrawingKitMarkBounds(mark)),
+    null
+  )
+
+  if (!union) {
+    return null
+  }
+
+  const padded = addBoundsPadding(union, 0.045)
+  const width = padded.xMax - padded.xMin
+  const height = padded.yMax - padded.yMin
+
+  if (width >= 0.82 && height >= 0.82) {
+    return null
+  }
+
+  return padded
+}
+
+function transformPointIntoBounds(point: DrawingKitPreviewPoint, bounds: DrawingKitBounds) {
+  const width = Math.max(bounds.xMax - bounds.xMin, 0.01)
+  const height = Math.max(bounds.yMax - bounds.yMin, 0.01)
+
+  return {
+    x: clampPoint((point.x - bounds.xMin) / width),
+    y: clampPoint((point.y - bounds.yMin) / height),
+  }
+}
+
+function transformMarkIntoBounds(mark: DrawingKitPreviewMark, bounds: DrawingKitBounds): DrawingKitPreviewMark {
+  const width = Math.max(bounds.xMax - bounds.xMin, 0.01)
+  const height = Math.max(bounds.yMax - bounds.yMin, 0.01)
+  const zoomScale = 1 / Math.max(width, height)
+
+  if (mark.kind === 'line') {
+    return {
+      ...mark,
+      width: Math.max(mark.width * zoomScale, mark.tool === 'spray' ? 5 : 4),
+      points: mark.points.map((point) => transformPointIntoBounds(point, bounds)),
+    }
+  }
+
+  return {
+    ...mark,
+    x: transformPointIntoBounds({ x: mark.x, y: mark.y }, bounds).x,
+    y: transformPointIntoBounds({ x: mark.x, y: mark.y }, bounds).y,
+    size: Math.max(mark.size * zoomScale, 16),
+  }
+}
+
 function renderLineMark(mark: Extract<DrawingKitPreviewMark, { kind: 'line' }>, width: number, height: number) {
   const points = mark.points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${Math.round(point.x * width)} ${Math.round(point.y * height)}`)
@@ -654,6 +773,61 @@ export function createDrawingKitScreenshotDataUrl(snapshot: DrawingKitAppSnapsho
     <text x="644" y="426" font-size="16" fill="#44505c">${checkpoint}</text>
     <text x="40" y="580" font-size="15" fill="#6f6156">${summary}</text>
     <g transform="translate(${canvasX}, ${canvasY})">${marks}</g>
+  </svg>`
+
+  return encodeSvgDataUrl(svg)
+}
+
+export function createDrawingKitVisionCompositeDataUrl(snapshot: DrawingKitAppSnapshot, boardImageDataUrl: string) {
+  const focusBounds = getDrawingKitFocusBounds(snapshot)
+  if (!focusBounds) {
+    return boardImageDataUrl
+  }
+
+  const width = 1200
+  const height = 700
+  const outerPadding = 32
+  const gap = 24
+  const panelWidth = (width - outerPadding * 2 - gap) / 2
+  const panelHeight = height - outerPadding * 2
+  const cropAspect = Math.max((focusBounds.xMax - focusBounds.xMin) / Math.max(focusBounds.yMax - focusBounds.yMin, 0.01), 0.35)
+  const maxCropWidth = panelWidth - 36
+  const maxCropHeight = panelHeight - 36
+
+  let cropWidth = maxCropWidth
+  let cropHeight = cropWidth / cropAspect
+  if (cropHeight > maxCropHeight) {
+    cropHeight = maxCropHeight
+    cropWidth = cropHeight * cropAspect
+  }
+
+  const cropX = outerPadding + panelWidth + gap + (panelWidth - cropWidth) / 2
+  const cropY = outerPadding + (panelHeight - cropHeight) / 2
+  const transformedMarks = clampDrawingKitPreviewMarks(snapshot.previewMarks).map((mark) =>
+    transformMarkIntoBounds(mark, focusBounds)
+  )
+  const cropMarks = transformedMarks
+    .map((mark) =>
+      mark.kind === 'line' ? renderLineMark(mark, cropWidth, cropHeight) : renderStampMark(mark, cropWidth, cropHeight)
+    )
+    .join('')
+  const caption = escapeSvgText(snapshot.caption ?? 'Uncaptioned doodle')
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <rect width="${width}" height="${height}" rx="28" fill="#fff9ec" />
+    <rect x="${outerPadding}" y="${outerPadding}" width="${panelWidth}" height="${panelHeight}" rx="26" fill="#fffdf4" stroke="#f1c56c" stroke-width="3" />
+    <image
+      href="${escapeSvgText(boardImageDataUrl)}"
+      x="${outerPadding + 16}"
+      y="${outerPadding + 16}"
+      width="${panelWidth - 32}"
+      height="${panelHeight - 32}"
+      preserveAspectRatio="xMidYMid meet"
+    />
+    <rect x="${outerPadding + panelWidth + gap}" y="${outerPadding}" width="${panelWidth}" height="${panelHeight}" rx="26" fill="#fffdf4" stroke="#bed8ff" stroke-width="3" />
+    <rect x="${cropX}" y="${cropY}" width="${cropWidth}" height="${cropHeight}" rx="24" fill="#fffdf4" stroke="#267df0" stroke-width="2" />
+    <g transform="translate(${cropX}, ${cropY})">${cropMarks}</g>
+    <text x="${outerPadding}" y="${height - 18}" font-size="18" font-weight="700" fill="#5b4a39">Caption: ${caption}. View the exact board on the left and the zoomed focus crop on the right.</text>
   </svg>`
 
   return encodeSvgDataUrl(svg)

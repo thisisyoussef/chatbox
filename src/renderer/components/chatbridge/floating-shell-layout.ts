@@ -38,12 +38,12 @@ const DEFAULT_FLOATING_SHELL_SIZING: FloatingShellSizingProfile = {
 }
 
 const DRAWING_KIT_FLOATING_SHELL_SIZING: FloatingShellSizingProfile = {
-  defaultWidth: 860,
-  defaultHeight: 760,
-  expandedWidth: 1100,
-  expandedHeight: 860,
-  minWidth: 720,
-  minHeight: 680,
+  defaultWidth: 920,
+  defaultHeight: 840,
+  expandedWidth: 1180,
+  expandedHeight: 940,
+  minWidth: 760,
+  minHeight: 640,
 }
 
 function getFloatingShellSizing(appId?: string): FloatingShellSizingProfile {
