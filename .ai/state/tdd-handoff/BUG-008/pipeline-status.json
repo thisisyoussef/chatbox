@@ -1,0 +1,15 @@
+{
+  "storyId": "BUG-008",
+  "lane": "standard",
+  "status": "green",
+  "phases": {
+    "agent1": "completed",
+    "agent2": "completed",
+    "agent3": "completed"
+  },
+  "focusedValidation": [
+    "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm run generate:routes && pnpm vitest run src/renderer/packages/weather-dashboard/host-routing.test.ts src/renderer/stores/session/messages.weather.test.ts",
+    "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/renderer/packages/weather-dashboard/host-routing.test.ts src/renderer/stores/session/messages.weather.test.ts src/renderer/packages/chatbridge/reviewed-app-launch.test.ts test/integration/chatbridge/scenarios/live-reviewed-app-invocation.test.ts"
+  ],
+  "fullValidation": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm test && pnpm check && pnpm lint && pnpm build && git diff --check"
+}

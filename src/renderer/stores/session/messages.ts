@@ -69,7 +69,7 @@ export async function submitNewUserMessage(
   await insertMessage(sessionId, newUserMsg)
 
   if (needGenerating && (session.type === 'chat' || session.type === undefined)) {
-    const weatherDashboardMessage = interceptWeatherDashboardTurn(session.messages, newUserMsg)
+    const weatherDashboardMessage = await interceptWeatherDashboardTurn(session.messages, newUserMsg, { sessionId })
     if (weatherDashboardMessage) {
       await insertMessage(sessionId, weatherDashboardMessage)
       return

@@ -1,0 +1,8 @@
+{
+  "storyId": "BUG-008",
+  "stage": "agent1",
+  "status": "completed",
+  "focus": "Author regressions for immediate Weather Dashboard launch after location resolution and legacy confirmation follow-up handling.",
+  "redCommand": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/renderer/packages/weather-dashboard/host-routing.test.ts src/renderer/stores/session/messages.weather.test.ts",
+  "redObserved": true
+}

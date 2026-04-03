@@ -13,3 +13,7 @@
 - 2026-04-02: Restricted the floating ChatBridge app tray to actual runtime
   parts and excluded clarify/refuse route artifacts so a later routing receipt
   cannot displace an already-active Chess tray.
+- 2026-04-03: Promoted Weather Dashboard `route-ready` host turns directly into
+  the reviewed app launch contract so a resolved location opens the dashboard
+  immediately, while still honoring short launch-confirmation follow-ups from
+  legacy `route-ready` receipts.

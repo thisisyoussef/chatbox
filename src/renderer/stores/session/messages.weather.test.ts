@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createMessage, type Session } from '@shared/types'
+import { readChatBridgeReviewedAppLaunch } from '@shared/chatbridge'
+import { createMessage, type MessageAppPart, type Session } from '@shared/types'
 import { submitNewUserMessage } from './messages'
 
 const { getSessionMock, getSessionSettingsMock, insertMessageMock, generateMock, runCompactionMock } = vi.hoisted(() => ({
@@ -89,6 +90,14 @@ vi.mock('@/packages/model-setting-utils', () => ({
 }))
 
 describe('submitNewUserMessage weather interception', () => {
+  function getLaunchPart(message: { contentParts: Session['messages'][number]['contentParts'] }): MessageAppPart {
+    const launchPart = message.contentParts.find((part): part is MessageAppPart => part.type === 'app')
+    if (!launchPart) {
+      throw new Error('Expected a reviewed Weather Dashboard launch part.')
+    }
+    return launchPart
+  }
+
   beforeEach(() => {
     getSessionMock.mockReset()
     getSessionSettingsMock.mockReset()
@@ -103,7 +112,7 @@ describe('submitNewUserMessage weather interception', () => {
     })
   })
 
-  it('inserts a host-owned weather route message and skips generation', async () => {
+  it('launches the reviewed Weather Dashboard immediately when the prompt includes a specific location', async () => {
     const session: Session = {
       id: 'session-1',
       name: 'Weather',
@@ -122,16 +131,51 @@ describe('submitNewUserMessage weather interception', () => {
 
     const assistantMessage = insertMessageMock.mock.calls[1][1]
     expect(assistantMessage.role).toBe('assistant')
-    expect(assistantMessage.contentParts).toEqual([
-      expect.objectContaining({
+    expect(readChatBridgeReviewedAppLaunch(getLaunchPart(assistantMessage).values)).toMatchObject({
+      appId: 'weather-dashboard',
+      toolName: 'weather_dashboard_open',
+      request: 'weather in Chicago, IL',
+      location: 'Chicago, IL',
+    })
+  })
+
+  it('launches the reviewed Weather Dashboard after a location clarification reply', async () => {
+    const clarification = createMessage('assistant')
+    clarification.contentParts = [
+      {
         type: 'info',
-        text: 'Weather Dashboard route ready for Chicago, IL.',
-        values: expect.objectContaining({
+        text: 'Weather Dashboard needs a location. Reply with a city, optionally with state or country, like Chicago or Springfield, IL.',
+        values: {
           hostFlow: 'weather-dashboard',
-          status: 'route-ready',
-          locationQuery: 'Chicago, IL',
-        }),
-      }),
-    ])
+          status: 'awaiting-location',
+          originalRequest: 'open the weather app',
+          reason: 'missing-location',
+        },
+      },
+    ]
+
+    const session: Session = {
+      id: 'session-2',
+      name: 'Weather',
+      type: 'chat',
+      messages: [clarification],
+    }
+    getSessionMock.mockResolvedValue(session)
+
+    await submitNewUserMessage(session.id, {
+      newUserMsg: createMessage('user', 'Detroit, Michigan'),
+      needGenerating: true,
+    })
+
+    expect(insertMessageMock).toHaveBeenCalledTimes(2)
+    expect(generateMock).not.toHaveBeenCalled()
+
+    const assistantMessage = insertMessageMock.mock.calls[1][1]
+    expect(readChatBridgeReviewedAppLaunch(getLaunchPart(assistantMessage).values)).toMatchObject({
+      appId: 'weather-dashboard',
+      toolName: 'weather_dashboard_open',
+      request: 'open the weather app',
+      location: 'Detroit, Michigan',
+    })
   })
 })
