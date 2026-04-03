@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Message, MessageAppPart } from '../types/session'
-import { selectChatBridgeAppContext, selectChatBridgeAppContexts } from './app-memory'
+import {
+  buildChatBridgeSelectedAppContextPrompt,
+  selectChatBridgeAppContext,
+  selectChatBridgeAppContexts,
+} from './app-memory'
+import { createDrawingKitAppSnapshot } from './apps/drawing-kit'
 
 function createAppPart(overrides: Partial<MessageAppPart> = {}): MessageAppPart {
   return {
@@ -11,6 +16,7 @@ function createAppPart(overrides: Partial<MessageAppPart> = {}): MessageAppPart 
     lifecycle: overrides.lifecycle ?? 'complete',
     summary: overrides.summary ?? 'Raw app summary.',
     summaryForModel: overrides.summaryForModel ?? 'Host-approved app summary.',
+    snapshot: overrides.snapshot,
     values: overrides.values,
   }
 }
@@ -128,18 +134,107 @@ describe('selectChatBridgeAppContexts', () => {
       messageId: 'story-new-active',
       appInstanceId: 'story-instance-2',
     })
-    expect(selectChatBridgeAppContext([
-      createAppMessage(
-        'story-new-active',
-        createAppPart({
-          appInstanceId: 'story-instance-2',
-          lifecycle: 'active',
-          summaryForModel: 'The new Story Builder draft should still be selectable.',
-        })
-      ),
-    ])).toMatchObject({
+    expect(
+      selectChatBridgeAppContext([
+        createAppMessage(
+          'story-new-active',
+          createAppPart({
+            appInstanceId: 'story-instance-2',
+            lifecycle: 'active',
+            summaryForModel: 'The new Story Builder draft should still be selectable.',
+          })
+        ),
+      ])
+    ).toMatchObject({
       messageId: 'story-new-active',
       appInstanceId: 'story-instance-2',
     })
+  })
+
+  it('keeps bounded state digests and screenshot refs for the selected Drawing Kit context', () => {
+    const drawingSnapshot = createDrawingKitAppSnapshot({
+      roundLabel: 'Dare 09',
+      roundPrompt: 'Draw a comet sandwich.',
+      selectedTool: 'spray',
+      status: 'checkpointed',
+      caption: 'Comet sandwich',
+      strokeCount: 5,
+      stickerCount: 2,
+      checkpointId: 'drawing-kit-5000',
+      lastUpdatedAt: 5_000,
+    })
+
+    const contexts = selectChatBridgeAppContexts([
+      createAppMessage(
+        'drawing-active',
+        createAppPart({
+          appId: 'drawing-kit',
+          appName: 'Drawing Kit',
+          appInstanceId: 'drawing-instance-1',
+          lifecycle: 'active',
+          summaryForModel: drawingSnapshot.summary,
+          snapshot: drawingSnapshot,
+          values: {
+            chatbridgeAppMedia: {
+              screenshots: [
+                {
+                  kind: 'app-screenshot',
+                  appId: 'drawing-kit',
+                  appInstanceId: 'drawing-instance-1',
+                  storageKey: 'storage://drawing-shot-1',
+                  capturedAt: 5_000,
+                  summary: 'Comet sandwich on the sticky-note canvas.',
+                  source: 'host-rendered',
+                },
+              ],
+            },
+          },
+        })
+      ),
+    ])
+
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0]).toMatchObject({
+      appId: 'drawing-kit',
+      latestScreenshot: {
+        storageKey: 'storage://drawing-shot-1',
+      },
+      stateDigest: {
+        kind: 'drawing-kit',
+      },
+    })
+
+    const prompt = buildChatBridgeSelectedAppContextPrompt([
+      createAppMessage(
+        'drawing-active',
+        createAppPart({
+          appId: 'drawing-kit',
+          appName: 'Drawing Kit',
+          appInstanceId: 'drawing-instance-1',
+          lifecycle: 'active',
+          summaryForModel: drawingSnapshot.summary,
+          snapshot: drawingSnapshot,
+          values: {
+            chatbridgeAppMedia: {
+              screenshots: [
+                {
+                  kind: 'app-screenshot',
+                  appId: 'drawing-kit',
+                  appInstanceId: 'drawing-instance-1',
+                  storageKey: 'storage://drawing-shot-1',
+                  capturedAt: 5_000,
+                  summary: 'Comet sandwich on the sticky-note canvas.',
+                  source: 'host-rendered',
+                },
+              ],
+            },
+          },
+        })
+      ),
+    ])
+
+    expect(prompt).toContain('Drawing Kit')
+    expect(prompt).toContain('Prompt: Draw a comet sandwich.')
+    expect(prompt).toContain('Screenshot: Comet sandwich on the sticky-note canvas.')
   })
 })

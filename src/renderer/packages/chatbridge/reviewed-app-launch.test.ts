@@ -193,9 +193,7 @@ function createSessionWithGenericLaunchPart(): { session: Session; launchPart: M
   assistantMessage.id = 'assistant-reviewed-launch-1'
   assistantMessage.contentParts = upsertReviewedAppLaunchParts([createDrawingKitLaunchToolCallPart()])
 
-  const launchPart = assistantMessage.contentParts.find(
-    (part): part is MessageAppPart => part.type === 'app'
-  )
+  const launchPart = assistantMessage.contentParts.find((part): part is MessageAppPart => part.type === 'app')
   if (!launchPart) {
     throw new Error('Expected a reviewed app launch part.')
   }
@@ -487,6 +485,15 @@ describe('reviewed app launch adoption', () => {
       messageId: 'assistant-reviewed-launch-1',
       part: readyPart,
       event: stateEvent,
+      screenshotRef: {
+        kind: 'app-screenshot',
+        appId: 'drawing-kit',
+        appInstanceId: 'reviewed-launch:tool-reviewed-launch-drawing-1',
+        storageKey: 'storage://drawing-shot-1',
+        capturedAt: 12_000,
+        summary: 'Drawing Kit is active with a trusted host-rendered canvas snapshot.',
+        source: 'host-rendered',
+      },
       now: () => 12_000,
       createId: () => 'event-state-reviewed-launch-1',
     })
@@ -501,6 +508,15 @@ describe('reviewed app launch adoption', () => {
         kind: 'reviewed-app-launch',
         summary: 'Drawing Kit bridge runtime is live inside the host-owned shell.',
       },
+      values: {
+        chatbridgeAppMedia: {
+          screenshots: [
+            {
+              storageKey: 'storage://drawing-shot-1',
+            },
+          ],
+        },
+      },
     })
     expect(activated.chatBridgeAppRecords).toMatchObject({
       instances: [
@@ -510,11 +526,7 @@ describe('reviewed app launch adoption', () => {
           bridgeSessionId: 'bridge-session-reviewed-1',
         },
       ],
-      events: [
-        { kind: 'instance.created' },
-        { kind: 'bridge.ready' },
-        { kind: 'state.updated' },
-      ],
+      events: [{ kind: 'instance.created' }, { kind: 'bridge.ready' }, { kind: 'state.updated' }],
     })
 
     const recovered = applyReviewedAppLaunchRecoveryToSession(activated, {
@@ -640,6 +652,15 @@ describe('reviewed app launch adoption', () => {
         idempotencyKey: 'state-reviewed-drawing-2',
         snapshot: checkpointSnapshot,
       },
+      screenshotRef: {
+        kind: 'app-screenshot',
+        appId: 'drawing-kit',
+        appInstanceId: 'reviewed-launch:tool-reviewed-launch-drawing-1',
+        storageKey: 'storage://drawing-checkpoint-shot-1',
+        capturedAt: 22_000,
+        summary: checkpointSnapshot.checkpointSummary,
+        source: 'host-rendered',
+      },
       now: () => 22_000,
       createId: () => 'event-state-reviewed-drawing-1',
     })
@@ -655,34 +676,43 @@ describe('reviewed app launch adoption', () => {
         checkpointId: 'drawing-kit-4200',
         caption: 'Triple pickle sandwich',
       },
+      values: {
+        chatbridgeAppMedia: {
+          screenshots: [
+            {
+              storageKey: 'storage://drawing-checkpoint-shot-1',
+            },
+          ],
+        },
+      },
     })
 
     const completed = applyReviewedAppLaunchBridgeEventToSession(activated, {
-        messageId: 'assistant-reviewed-launch-drawing-1',
-        part: activePart,
-        event: {
-          kind: 'app.complete',
-          bridgeSessionId: 'bridge-session-reviewed-drawing-1',
-          appInstanceId: 'reviewed-launch:tool-reviewed-launch-drawing-1',
-          bridgeToken: 'bridge-token-reviewed-drawing-1',
-          sequence: 3,
-          idempotencyKey: 'complete-reviewed-drawing-3',
-          completion: {
-            schemaVersion: 1,
-            status: 'success',
-            suggestedSummary: {
-              text: 'Drawing Kit round complete. Triple pickle sandwich and the llama sticker are saved for follow-up chat.',
-            },
-            resumability: {
-              resumable: true,
-              checkpointId: 'drawing-kit-4200',
-              resumeHint: 'Play again reopens Dare 05 from checkpoint drawing-kit-4200.',
-            },
+      messageId: 'assistant-reviewed-launch-drawing-1',
+      part: activePart,
+      event: {
+        kind: 'app.complete',
+        bridgeSessionId: 'bridge-session-reviewed-drawing-1',
+        appInstanceId: 'reviewed-launch:tool-reviewed-launch-drawing-1',
+        bridgeToken: 'bridge-token-reviewed-drawing-1',
+        sequence: 3,
+        idempotencyKey: 'complete-reviewed-drawing-3',
+        completion: {
+          schemaVersion: 1,
+          status: 'success',
+          suggestedSummary: {
+            text: 'Drawing Kit round complete. Triple pickle sandwich and the llama sticker are saved for follow-up chat.',
+          },
+          resumability: {
+            resumable: true,
+            checkpointId: 'drawing-kit-4200',
+            resumeHint: 'Play again reopens Dare 05 from checkpoint drawing-kit-4200.',
           },
         },
-        now: () => 23_000,
-        createId: () => 'event-complete-reviewed-drawing-1',
-      })
+      },
+      now: () => 23_000,
+      createId: () => 'event-complete-reviewed-drawing-1',
+    })
 
     const completedPart = getLaunchPart(completed, 'assistant-reviewed-launch-drawing-1')
     expect(completedPart).toMatchObject({
