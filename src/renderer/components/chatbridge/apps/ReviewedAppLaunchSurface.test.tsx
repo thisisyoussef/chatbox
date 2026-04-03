@@ -2,6 +2,8 @@
  * @vitest-environment jsdom
  */
 
+process.env.CHATBOX_BUILD_PLATFORM = 'web'
+
 import { MantineProvider } from '@mantine/core'
 import { fireEvent, render, waitFor } from '@testing-library/react'
 import type { BridgeReadyEvent } from '@shared/chatbridge/bridge-session'
@@ -11,12 +13,23 @@ import {
   listChatBridgeObservabilityEvents,
 } from '@shared/chatbridge'
 import type { MessageAppPart, Session } from '@shared/types'
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   applyReviewedAppLaunchBootstrapToSession,
   applyReviewedAppLaunchBridgeEventToSession,
   applyReviewedAppLaunchBridgeReadyToSession,
 } from '@/packages/chatbridge/reviewed-app-launch'
+
+const originalFetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'fetch')
+
+function restoreFetch() {
+  if (originalFetchDescriptor) {
+    Object.defineProperty(globalThis, 'fetch', originalFetchDescriptor)
+    return
+  }
+
+  Reflect.deleteProperty(globalThis, 'fetch')
+}
 
 const mocks = vi.hoisted(() => {
   const controller = {
@@ -341,6 +354,10 @@ describe('ReviewedAppLaunchSurface', () => {
     })
   })
 
+  afterEach(() => {
+    restoreFetch()
+  })
+
   it('boots a reviewed app launch through the bridge controller instead of the seeded chess runtime', async () => {
     const { container, queryByRole } = render(
       <MantineProvider>
@@ -485,6 +502,59 @@ describe('ReviewedAppLaunchSurface', () => {
         })
       )
     })
+  })
+
+  it('uses the web weather bridge when Electron IPC is unavailable', async () => {
+    Reflect.deleteProperty(window, 'electronAPI')
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        snapshot: createWeatherSnapshot({
+          locationQuery: 'Chicago',
+          locationName: 'Chicago, Illinois, United States',
+          headline: '72°F and Mostly clear',
+          conditionLabel: 'Mostly clear',
+          temperature: 72,
+          cacheStatus: 'miss',
+        }),
+      }),
+    })
+
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      value: fetchMock,
+    })
+
+    const { findByText } = render(
+      <MantineProvider>
+        <ReviewedAppLaunchSurface
+          part={createWeatherReviewedLaunchPart()}
+          sessionId="session-reviewed-launch-weather-1"
+          messageId="assistant-reviewed-launch-weather-1"
+        />
+      </MantineProvider>
+    )
+
+    await findByText('Chicago, Illinois, United States')
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/weather/dashboard', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          request: 'Open Weather Dashboard for Chicago and show the forecast.',
+          location: 'Chicago',
+          units: 'imperial',
+          refresh: false,
+          traceParentRunId: 'launch-trace-reviewed-1',
+        }),
+      })
+    })
+
+    expect(mocks.invoke).not.toHaveBeenCalled()
   })
 
   it('resumes the weather surface from the latest persisted snapshot location', async () => {
