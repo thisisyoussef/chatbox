@@ -1,5 +1,7 @@
+import { Chess } from 'chess.js'
 import { z } from 'zod'
 import type { Message, MessageAppLifecycle, MessageAppPart } from '../types/session'
+import { type ChessAppSnapshot, ChessAppSnapshotSchema, getChessSummary } from './apps/chess'
 
 export const CHATBRIDGE_CHESS_BOARD_CONTEXT_SCHEMA_VERSION = 1 as const
 export const CHATBRIDGE_CHESS_REASONING_CONTEXT_SCHEMA_VERSION = 1 as const
@@ -60,6 +62,59 @@ function isChessAppId(appId: string) {
   return appId === 'chess' || appId.startsWith('chess-')
 }
 
+function getFullmoveNumberFromFen(fen: string) {
+  const fullmoveField = fen.trim().split(/\s+/)[5]
+  const fullmoveNumber = Number.parseInt(fullmoveField ?? '', 10)
+  return Number.isInteger(fullmoveNumber) && fullmoveNumber > 0 ? fullmoveNumber : null
+}
+
+function getPositionStatusFromPersistentSnapshot(snapshot: ChessAppSnapshot): ChatBridgeChessBoardPositionStatus {
+  if (snapshot.status.isCheckmate) {
+    return 'checkmate'
+  }
+
+  if (snapshot.status.isStalemate) {
+    return 'stalemate'
+  }
+
+  if (snapshot.status.isDraw || snapshot.status.isInsufficientMaterial) {
+    return 'draw'
+  }
+
+  if (snapshot.status.isCheck) {
+    return 'check'
+  }
+
+  return 'in_progress'
+}
+
+function normalizePersistentChessSnapshot(snapshot: ChessAppSnapshot): ChatBridgeChessBoardContext | null {
+  const fullmoveNumber = getFullmoveNumberFromFen(snapshot.fen)
+  if (!fullmoveNumber) {
+    return null
+  }
+
+  let legalMovesCount: number | undefined
+  try {
+    legalMovesCount = new Chess(snapshot.fen).moves().length
+  } catch {
+    legalMovesCount = undefined
+  }
+
+  const lastMove = snapshot.moveHistory.at(-1)
+
+  return ChatBridgeChessBoardContextSchema.parse({
+    schemaVersion: CHATBRIDGE_CHESS_BOARD_CONTEXT_SCHEMA_VERSION,
+    fen: snapshot.fen,
+    sideToMove: snapshot.turn,
+    fullmoveNumber,
+    ...(legalMovesCount !== undefined ? { legalMovesCount } : {}),
+    positionStatus: getPositionStatusFromPersistentSnapshot(snapshot),
+    ...(lastMove ? { lastMove: { san: lastMove.san, uci: `${lastMove.from}${lastMove.to}` } } : {}),
+    summary: getChessSummary(snapshot),
+  })
+}
+
 function findLatestChessAppPart(messages: Message[]): MessageAppPart | null {
   for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
     const message = messages[messageIndex]
@@ -88,6 +143,11 @@ function getBoardContextSnapshot(part: MessageAppPart): ChatBridgeChessBoardCont
     if (parsed.success) {
       return parsed.data
     }
+  }
+
+  const persistentSnapshot = ChessAppSnapshotSchema.safeParse(part.snapshot)
+  if (persistentSnapshot.success) {
+    return normalizePersistentChessSnapshot(persistentSnapshot.data)
   }
 
   return null
