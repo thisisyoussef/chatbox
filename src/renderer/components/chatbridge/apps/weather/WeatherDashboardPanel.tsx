@@ -46,7 +46,7 @@ function getHeroSurfaceClasses(snapshot: WeatherDashboardPanelProps['snapshot'])
 
 function getHourlyEmptyState(snapshot: WeatherDashboardPanelProps['snapshot']) {
   if (snapshot.status === 'loading') {
-    return 'Hourly outlook will populate after the host returns the forecast.'
+    return 'Hourly outlook will populate when the forecast finishes loading.'
   }
 
   return 'Hourly outlook is not available for this snapshot.'
@@ -54,7 +54,7 @@ function getHourlyEmptyState(snapshot: WeatherDashboardPanelProps['snapshot']) {
 
 function getDailyEmptyState(snapshot: WeatherDashboardPanelProps['snapshot']) {
   if (snapshot.status === 'loading') {
-    return 'Daily outlook will populate after the host returns the forecast.'
+    return 'Daily outlook will populate when the forecast finishes loading.'
   }
 
   return 'Daily outlook is not available for this snapshot.'
@@ -62,7 +62,7 @@ function getDailyEmptyState(snapshot: WeatherDashboardPanelProps['snapshot']) {
 
 function getAlertEmptyState(snapshot: WeatherDashboardPanelProps['snapshot']) {
   if (snapshot.status === 'loading') {
-    return 'Weather alerts will appear here after the host returns the forecast.'
+    return 'Weather alerts will appear here when the forecast finishes loading.'
   }
 
   return 'No active weather alerts for this snapshot.'
@@ -94,6 +94,8 @@ export function WeatherDashboardPanel({
     snapshot.locationQuery && snapshot.locationQuery !== snapshot.locationName
       ? `Requested as ${snapshot.locationQuery}`
       : null
+  const locationMetaText =
+    snapshot.status === 'unavailable' ? 'Enter a city or region to load forecast details.' : snapshot.lastUpdatedLabel
 
   return (
     <div data-testid="weather-dashboard-panel" className="w-full overflow-hidden rounded-[24px] border border-chatbox-border-primary">
@@ -101,10 +103,7 @@ export function WeatherDashboardPanel({
         <div className={`overflow-hidden rounded-[24px] border p-5 ${getHeroSurfaceClasses(snapshot)}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <Text size="xs" fw={700} className="uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">
-                Reviewed flagship app
-              </Text>
-              <Text size="xl" fw={800} className="mt-1 text-chatbox-primary">
+              <Text size="xl" fw={800} className="text-chatbox-primary">
                 {snapshot.locationName}
               </Text>
               <Text size="sm" c="dimmed" className="mt-2 max-w-[52ch] whitespace-pre-wrap">
@@ -136,41 +135,28 @@ export function WeatherDashboardPanel({
 
           <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
             <section className={PANEL_SECTION_CLASSES}>
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                    Now
+              <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+                Now
+              </Text>
+              {hasCurrentData ? (
+                <>
+                  <Text className="mt-2 text-[42px] font-black leading-none text-chatbox-primary">
+                    {snapshot.current ? formatWeatherTemperature(snapshot.current.temperature, snapshot.units) : '--'}
                   </Text>
-                  {hasCurrentData ? (
-                    <>
-                      <Text className="mt-2 text-[42px] font-black leading-none text-chatbox-primary">
-                        {snapshot.current ? formatWeatherTemperature(snapshot.current.temperature, snapshot.units) : '--'}
-                      </Text>
-                      <Text size="sm" c="dimmed" className="mt-2">
-                        {snapshot.current?.conditionLabel ?? 'Current conditions unavailable'}
-                      </Text>
-                    </>
-                  ) : (
-                    <div className="mt-5 flex items-center gap-3">
-                      <Loader size="sm" />
-                      <Text size="sm" c="dimmed">
-                        {snapshot.status === 'loading'
-                          ? 'The host is fetching current conditions.'
-                          : 'Current conditions are not available for this request.'}
-                      </Text>
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-2">
-                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                    Host status
+                  <Text size="sm" c="dimmed" className="mt-2">
+                    {snapshot.current?.conditionLabel ?? 'Current conditions unavailable'}
                   </Text>
-                  <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
-                    {snapshot.dataStateLabel}
+                </>
+              ) : (
+                <div className="mt-5 flex items-center gap-3">
+                  <Loader size="sm" />
+                  <Text size="sm" c="dimmed">
+                    {snapshot.status === 'loading'
+                      ? 'Current conditions are loading.'
+                      : 'Current conditions are not available for this request.'}
                   </Text>
                 </div>
-              </div>
+              )}
 
               {hasCurrentData ? (
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -208,69 +194,41 @@ export function WeatherDashboardPanel({
 
             <section className={PANEL_SECTION_CLASSES}>
               <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                Host snapshot
+                Location
               </Text>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className={DETAIL_CARD_CLASSES}>
-                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                    Freshness window
-                  </Text>
-                  <Text size="sm" fw={700} className="mt-1 whitespace-pre-wrap text-chatbox-primary">
-                    {snapshot.lastUpdatedLabel}
-                  </Text>
-                </div>
-                <div className={DETAIL_CARD_CLASSES}>
-                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                    Source
-                  </Text>
-                  <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
-                    {snapshot.sourceLabel}
-                  </Text>
-                </div>
-                <div className={DETAIL_CARD_CLASSES}>
-                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                    Status
-                  </Text>
-                  <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
-                    {snapshot.dataStateLabel}
-                  </Text>
-                </div>
-                <div className={DETAIL_CARD_CLASSES}>
-                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                    Next step
-                  </Text>
-                  <Text size="sm" fw={700} className="mt-1 whitespace-pre-wrap text-chatbox-primary">
-                    {snapshot.refreshHint}
-                  </Text>
-                </div>
-                <div className={`${DETAIL_CARD_CLASSES} sm:col-span-2`}>
-                  <form
-                    className="flex flex-col gap-3 sm:flex-row sm:items-end"
-                    onSubmit={(event) => {
-                      event.preventDefault()
-                      onLocationSubmit()
-                    }}
-                  >
-                    <TextInput
-                      label="Location"
-                      value={locationDraft}
-                      onChange={(event) => onLocationDraftChange(event.currentTarget.value)}
-                      placeholder="Change city or region"
-                      disabled={controlsDisabled}
-                      className="min-w-0 flex-1"
-                    />
-                    <Button
-                      type="submit"
-                      variant="default"
-                      size="compact-sm"
-                      loading={changingLocation}
-                      disabled={controlsDisabled || locationDraft.trim().length === 0}
-                    >
-                      Update location
-                    </Button>
-                  </form>
-                </div>
-              </div>
+              <Text size="sm" c="dimmed" className="mt-3 whitespace-pre-wrap">
+                {locationMetaText}
+              </Text>
+              <form
+                className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  onLocationSubmit()
+                }}
+              >
+                <TextInput
+                  label="Location"
+                  value={locationDraft}
+                  onChange={(event) => onLocationDraftChange(event.currentTarget.value)}
+                  placeholder="Change city or region"
+                  disabled={controlsDisabled}
+                  className="min-w-0 flex-1"
+                />
+                <Button
+                  type="submit"
+                  variant="default"
+                  size="compact-sm"
+                  loading={changingLocation}
+                  disabled={controlsDisabled || locationDraft.trim().length === 0}
+                >
+                  Update location
+                </Button>
+              </form>
+              {snapshot.status === 'unavailable' ? (
+                <Text size="sm" c="dimmed" className="mt-3 whitespace-pre-wrap">
+                  {snapshot.refreshHint}
+                </Text>
+              ) : null}
             </section>
           </div>
         </div>
@@ -398,20 +356,7 @@ export function WeatherDashboardPanel({
               {snapshot.degraded.message}
             </Text>
           </div>
-        ) : (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mt-4 rounded-[20px] border border-sky-200 bg-sky-50/80 p-4 dark:border-sky-800 dark:bg-sky-950/20"
-          >
-            <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-sky-700 dark:text-sky-300">
-              Saved for follow-up chat
-            </Text>
-            <Text size="sm" className="mt-2 whitespace-pre-wrap text-chatbox-primary">
-              {snapshot.summary}
-            </Text>
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   )

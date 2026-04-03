@@ -6,7 +6,7 @@ import { ChatBridgeShell } from './ChatBridgeShell'
 import { ChatBridgeRouteArtifact } from './ChatBridgeRouteArtifact'
 import { getChatBridgeSurfaceContent } from './apps/surface'
 import { getChatBridgeSurfaceKind, isChatBridgeTrayEligiblePart } from './apps/surface-contract'
-import { getMessageAppPartViewModel } from './chatbridge'
+import { getMessageAppPartViewModel, shouldRenderChatBridgeSurfaceOnly } from './chatbridge'
 import { ChessRuntime } from './apps/chess/ChessRuntime'
 
 interface ChatBridgeMessagePartProps {
@@ -75,6 +75,11 @@ export function ChatBridgeMessagePart({
     ))
   const primaryAction = viewModel.recoveryActions?.find((action) => action.variant !== 'secondary')
   const secondaryAction = viewModel.recoveryActions?.find((action) => action.variant === 'secondary')
+  const surfaceOnlyPresentation = shouldRenderChatBridgeSurfaceOnly({
+    part,
+    state: viewModel.state,
+    hasSurface: inlineSurface !== null && inlineSurface !== undefined,
+  })
 
   function buildShellAction(action?: typeof primaryAction) {
     if (!action) {
@@ -104,19 +109,14 @@ export function ChatBridgeMessagePart({
     return (
       <div
         data-testid="chatbridge-anchor"
-        className="my-3 rounded-[22px] border border-chatbox-border-primary bg-chatbox-background-secondary p-4"
+        className="my-3 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-primary px-3 py-2"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <Text size="sm" fw={700} className="text-chatbox-primary">
-              {viewModel.title}
-            </Text>
-            <Text size="xs" c="dimmed" className="mt-1 whitespace-pre-wrap">
-              {floatingTrayMinimized
-                ? 'The live runtime is minimized in the app tray. Restore it when you want the full board or app surface back.'
-                : 'The live runtime is pinned in the app tray below the conversation so chat can continue without losing the app view.'}
-            </Text>
-          </div>
+        <div className="min-w-0">
+          <Text size="sm" fw={700} className="truncate text-chatbox-primary">
+            {viewModel.title}
+          </Text>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           <span
             className={cn(
               'inline-flex h-7 shrink-0 items-center rounded-full px-3 text-[11px] font-semibold tracking-[0.01em]',
@@ -125,18 +125,20 @@ export function ChatBridgeMessagePart({
           >
             {viewModel.statusLabel}
           </span>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-primary px-3 py-2">
-          <Text size="sm" className="text-chatbox-primary">
-            {viewModel.surfaceDescription}
-          </Text>
           {onOpenFloatingShell ? (
             <Button variant={floatingTrayMinimized ? 'light' : 'subtle'} size="compact-sm" onClick={onOpenFloatingShell}>
-              {floatingTrayMinimized ? 'Restore app' : 'Focus app'}
+              {floatingTrayMinimized ? 'Restore app' : 'Open app'}
             </Button>
           ) : null}
         </div>
+      </div>
+    )
+  }
+
+  if (surfaceOnlyPresentation) {
+    return (
+      <div data-testid="chatbridge-app-surface" className={presentation === 'tray' ? undefined : 'my-3'}>
+        {inlineSurface}
       </div>
     )
   }

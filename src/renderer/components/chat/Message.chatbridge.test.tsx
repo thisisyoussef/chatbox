@@ -131,9 +131,10 @@ describe('Message chatbridge rendering', () => {
       </MantineProvider>
     )
 
-    expect(screen.getByText('Chess shell')).toBeTruthy()
-    expect(screen.getAllByText('White to move').length).toBeGreaterThan(0)
-    expect(screen.getByText('The host keeps the chess runtime in the thread.')).toBeTruthy()
+    expect(screen.getByTestId('chatbridge-app-surface')).toBeTruthy()
+    expect(screen.queryByTestId('chatbridge-shell')).toBeNull()
+    expect(screen.getByRole('button', { name: /g1, white knight/i })).toBeTruthy()
+    expect(screen.getByText('Select a piece, then click a destination square.')).toBeTruthy()
   })
 
   it('persists a legal chess move through the existing message update path', () => {
@@ -231,7 +232,7 @@ describe('Message chatbridge rendering', () => {
     )
 
     expect(screen.getByTestId('chatbridge-anchor')).toBeTruthy()
-    expect(screen.getByText('Focus app')).toBeTruthy()
+    expect(screen.getByText('Open app')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /g1, white knight/i })).toBeNull()
   })
 

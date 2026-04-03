@@ -106,11 +106,10 @@ describe('ChatBridge Chess reviewed runtime handoff', () => {
           </MantineProvider>
         )
 
-        expect(screen.getByTestId('chatbridge-shell').getAttribute('data-state')).toBe('active')
+        expect(screen.getByTestId('chatbridge-app-surface')).toBeTruthy()
+        expect(screen.queryByTestId('chatbridge-shell')).toBeNull()
         expect(screen.getByRole('button', { name: /g1 white knight/i })).toBeTruthy()
-        expect(
-          screen.getByText('Select a piece, choose a destination square, and the host will validate the move before updating the live board.')
-        ).toBeTruthy()
+        expect(screen.getByText('Select a piece, then click a destination square.')).toBeTruthy()
       }
     ))
 })
