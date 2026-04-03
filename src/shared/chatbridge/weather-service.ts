@@ -60,7 +60,7 @@ const OpenWeatherGeocodeResponseSchema = z.array(
       country: z.string().trim().min(1).optional(),
       state: z.string().trim().min(1).optional(),
     })
-    .strict()
+    .passthrough()
 )
 
 const OpenWeatherConditionSchema = z
@@ -68,7 +68,7 @@ const OpenWeatherConditionSchema = z
     id: z.number().int().nonnegative(),
     description: z.string().trim().min(1).optional(),
   })
-  .strict()
+  .passthrough()
 
 const OpenWeatherOneCallResponseSchema = z
   .object({
@@ -81,7 +81,7 @@ const OpenWeatherOneCallResponseSchema = z
         wind_speed: z.number().nonnegative().optional(),
         weather: z.array(OpenWeatherConditionSchema).min(1),
       })
-      .strict(),
+      .passthrough(),
     hourly: z
       .array(
         z
@@ -91,7 +91,7 @@ const OpenWeatherOneCallResponseSchema = z
             pop: z.number().min(0).max(1).optional(),
             weather: z.array(OpenWeatherConditionSchema).min(1),
           })
-          .strict()
+          .passthrough()
       )
       .optional(),
     daily: z
@@ -104,11 +104,11 @@ const OpenWeatherOneCallResponseSchema = z
                 min: z.number(),
                 max: z.number(),
               })
-              .strict(),
+              .passthrough(),
             pop: z.number().min(0).max(1).optional(),
             weather: z.array(OpenWeatherConditionSchema).min(1),
           })
-          .strict()
+          .passthrough()
       )
       .optional(),
     alerts: z
@@ -122,11 +122,11 @@ const OpenWeatherOneCallResponseSchema = z
             description: z.string().trim().min(1),
             tags: z.array(z.string().trim().min(1)).optional(),
           })
-          .strict()
+          .passthrough()
       )
       .optional(),
   })
-  .strict()
+  .passthrough()
 
 class WeatherGatewayError extends Error {
   public readonly code: 'upstream-timeout' | 'upstream-error' | 'invalid-response'
