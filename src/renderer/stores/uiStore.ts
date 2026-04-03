@@ -8,6 +8,14 @@ import type { FloatingShellFrame } from '@/components/chatbridge/floating-shell-
 import platform from '@/platform'
 import { safeStorage } from './safeStorage'
 
+function readInitialTheme(): 'light' | 'dark' {
+  try {
+    return globalThis.localStorage?.getItem('initial-theme') === 'dark' ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+}
+
 interface ChatBridgeFloatingShellState {
   appInstanceId: string
   minimized: boolean
@@ -23,7 +31,7 @@ export const uiStore = createStore(
       {
         toasts: [] as Toast[],
         quote: '',
-        realTheme: localStorage.getItem('initial-theme') === 'dark' ? 'dark' : ('light' as 'light' | 'dark'),
+        realTheme: readInitialTheme(),
         messageListElement: null as RefObject<HTMLDivElement> | null,
         messageScrolling: null as RefObject<VirtuosoHandle> | null,
         messageScrollingAtTop: false,
