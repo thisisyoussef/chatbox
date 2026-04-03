@@ -78,6 +78,47 @@ describe('chatbridge app state helpers', () => {
     )
   })
 
+  it('falls back to a bounded board description when a drawing screenshot summary is unavailable', () => {
+    const digest = buildChatBridgeAppStateDigest(
+      createPart({
+        appId: 'drawing-kit',
+        appName: 'Drawing Kit',
+        snapshot: createDrawingKitAppSnapshot({
+          roundLabel: 'Dare 09',
+          roundPrompt: 'Draw the flappiest mascot with one noodle line.',
+          selectedTool: 'brush',
+          status: 'drawing',
+          strokeCount: 3,
+          stickerCount: 1,
+          previewMarks: [
+            {
+              kind: 'line',
+              tool: 'brush',
+              color: '#267df0',
+              width: 5,
+              points: [
+                { x: 0.18, y: 0.22 },
+                { x: 0.52, y: 0.48 },
+              ],
+            },
+            {
+              kind: 'stamp',
+              stamp: 'star',
+              color: '#f2b61b',
+              size: 18,
+              x: 0.82,
+              y: 0.18,
+            },
+          ],
+        }),
+      })
+    )
+
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Visible board: Visible drawing:')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('blue brush stroke')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('star stamp')
+  })
+
   it('stores only the latest bounded set of app-linked screenshots', () => {
     const first = appendChatBridgeAppScreenshot(undefined, {
       kind: 'app-screenshot',

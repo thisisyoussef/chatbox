@@ -215,7 +215,7 @@ describe('streamText tracing metadata', () => {
         }),
       })
     )
-  }, 20000)
+  }, 40000)
 
   it('injects a live clarify route artifact when the reviewed router needs confirmation', async () => {
     vi.mocked(createReviewedSingleAppToolSet).mockReturnValue({

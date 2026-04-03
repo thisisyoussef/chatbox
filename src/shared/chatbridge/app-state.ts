@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { MessageAppPart } from '../types/session'
 import { parseChessAppSnapshot } from './apps/chess'
-import { parseDrawingKitAppSnapshot } from './apps/drawing-kit'
+import { describeDrawingKitVisibleBoard, parseDrawingKitAppSnapshot } from './apps/drawing-kit'
 
 export const CHATBRIDGE_APP_MEDIA_VALUES_KEY = 'chatbridgeAppMedia' as const
 
@@ -77,7 +77,9 @@ function buildDrawingKitDigest(part: MessageAppPart): ChatBridgeAppStateDigest |
   }
 
   const recentMarks = snapshot.previewMarks.slice(-MAX_DRAWING_KIT_MARKS).map(describeDrawingKitMark)
-  const latestScreenshotDescription = normalizeSummary(getLatestChatBridgeAppScreenshot(part.values)?.summary)
+  const latestScreenshotDescription =
+    normalizeSummary(getLatestChatBridgeAppScreenshot(part.values)?.summary) ??
+    normalizeSummary(describeDrawingKitVisibleBoard(snapshot) ?? undefined)
 
   return {
     kind: 'drawing-kit',

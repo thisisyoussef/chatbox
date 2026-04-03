@@ -284,7 +284,7 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
       sandbox="allow-scripts allow-forms"
       className="w-full border-none"
       style={{
-        minHeight: isDrawingKit ? 620 : 260,
+        minHeight: isDrawingKit ? 760 : 260,
       }}
       onLoad={handleLoad}
     />

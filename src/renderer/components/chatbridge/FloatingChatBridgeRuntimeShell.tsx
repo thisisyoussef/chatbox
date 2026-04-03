@@ -1,4 +1,5 @@
 import { ActionIcon, Button, Text } from '@mantine/core'
+import { DRAWING_KIT_APP_ID } from '@shared/chatbridge/apps/drawing-kit'
 import type { MessageAppPart } from '@shared/types'
 import {
   IconArrowDownRight,
@@ -322,6 +323,7 @@ export function FloatingChatBridgeRuntimeShell({
   }
 
   const appTitle = part.appName || part.appId
+  const isDrawingKit = part.appId === DRAWING_KIT_APP_ID
 
   if (isSmallScreen) {
     return createPortal(
@@ -355,17 +357,30 @@ export function FloatingChatBridgeRuntimeShell({
           className="pointer-events-auto absolute inset-x-0 bottom-0 rounded-t-[28px] border-t border-chatbox-border-primary bg-chatbox-background-primary px-3 pb-3 pt-2 shadow-[0_-18px_48px_rgba(15,23,42,0.24)]"
         >
           <div className="mx-auto max-w-5xl">
-            <div className="mb-3 flex items-start justify-between gap-3">
+            <div className={cn('mb-3 flex justify-between gap-3', isDrawingKit ? 'items-center' : 'items-start')}>
               <div className="min-w-0">
-                <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                  App sheet
-                </Text>
-                <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
-                  {appTitle}
-                </Text>
-                <Text size="xs" c="dimmed" className="mt-1 whitespace-pre-wrap">
-                  The active runtime stays lifted above the thread on small screens, without desktop drag controls.
-                </Text>
+                {isDrawingKit ? (
+                  <Text size="sm" fw={700} className="text-chatbox-primary">
+                    {appTitle}
+                  </Text>
+                ) : (
+                  <>
+                    <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+                      App sheet
+                    </Text>
+                    <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
+                      {appTitle}
+                    </Text>
+                    <Text size="xs" c="dimmed" className="mt-1 whitespace-pre-wrap">
+                      The active runtime stays lifted above the thread on small screens, without desktop drag controls.
+                    </Text>
+                  </>
+                )}
+                {isDrawingKit ? (
+                  <Text size="xs" c="dimmed" className="mt-1">
+                    Keep the board visible while chat stays available below.
+                  </Text>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Button
@@ -387,7 +402,11 @@ export function FloatingChatBridgeRuntimeShell({
               </div>
             </div>
 
-            <div className="max-h-[48vh] overflow-y-auto rounded-[24px]">
+            <div
+              className={cn(
+                isDrawingKit ? 'max-h-[72vh] overflow-y-auto' : 'max-h-[48vh] overflow-y-auto rounded-[24px]'
+              )}
+            >
               <ChatBridgeMessagePart part={part} sessionId={sessionId} messageId={messageId} presentation="tray" />
             </div>
           </div>
@@ -451,58 +470,122 @@ export function FloatingChatBridgeRuntimeShell({
         }}
       >
         <div
-          className="flex items-start gap-3 border-b border-chatbox-border-primary bg-chatbox-background-secondary/90 px-4 py-3 backdrop-blur-sm"
+          className={cn(
+            'border-b border-chatbox-border-primary bg-chatbox-background-secondary/90 backdrop-blur-sm',
+            isDrawingKit ? 'flex items-center gap-3 px-3 py-2.5' : 'flex items-start gap-3 px-4 py-3'
+          )}
           onPointerDown={handleHeaderPointerDown}
         >
-          <div className="min-w-0 flex-1">
-            <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-              Floating app
-            </Text>
-            <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
-              {appTitle}
-            </Text>
-            <Text size="xs" c="dimmed" className="mt-1 whitespace-pre-wrap">
-              Drag, resize, or return to the source message without changing the thread layout.
-            </Text>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            {!expanded ? (
-              <Button
-                variant="subtle"
-                size="compact-sm"
-                leftSection={<IconGripHorizontal size={14} />}
-                aria-label="Move app overlay"
-                onPointerDown={handleMoveStart}
-                onKeyDown={handleMoveKeyDown}
-                onClick={(event) => event.preventDefault()}
-              >
-                Move
-              </Button>
-            ) : null}
-            <Button
-              variant="subtle"
-              size="compact-sm"
-              leftSection={<IconArrowDownRight size={14} />}
-              onClick={onJumpToSource}
-            >
-              Source
-            </Button>
-            <ActionIcon
-              variant="subtle"
-              size="lg"
-              aria-label={expanded ? 'Restore overlay size' : 'Expand overlay'}
-              onClick={() => onExpandedChange(!expanded)}
-            >
-              {expanded ? <IconArrowsMinimize size={18} /> : <IconArrowsMaximize size={18} />}
-            </ActionIcon>
-            <ActionIcon variant="subtle" size="lg" aria-label="Minimize overlay" onClick={() => onMinimizeChange(true)}>
-              <IconPictureInPictureOn size={18} />
-            </ActionIcon>
-          </div>
+          {isDrawingKit ? (
+            <>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <Text size="sm" fw={700} className="truncate text-chatbox-primary">
+                    {appTitle}
+                  </Text>
+                  <Text size="xs" c="dimmed" className="truncate">
+                    Board-first overlay
+                  </Text>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {!expanded ? (
+                  <Button
+                    variant="subtle"
+                    size="compact-sm"
+                    leftSection={<IconGripHorizontal size={14} />}
+                    aria-label="Move app overlay"
+                    onPointerDown={handleMoveStart}
+                    onKeyDown={handleMoveKeyDown}
+                    onClick={(event) => event.preventDefault()}
+                  >
+                    Move
+                  </Button>
+                ) : null}
+                <Button
+                  variant="subtle"
+                  size="compact-sm"
+                  leftSection={<IconArrowDownRight size={14} />}
+                  onClick={onJumpToSource}
+                >
+                  Source
+                </Button>
+                <ActionIcon
+                  variant="subtle"
+                  size="lg"
+                  aria-label={expanded ? 'Restore overlay size' : 'Expand overlay'}
+                  onClick={() => onExpandedChange(!expanded)}
+                >
+                  {expanded ? <IconArrowsMinimize size={18} /> : <IconArrowsMaximize size={18} />}
+                </ActionIcon>
+                <ActionIcon
+                  variant="subtle"
+                  size="lg"
+                  aria-label="Minimize overlay"
+                  onClick={() => onMinimizeChange(true)}
+                >
+                  <IconPictureInPictureOn size={18} />
+                </ActionIcon>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="min-w-0 flex-1">
+                <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+                  Floating app
+                </Text>
+                <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
+                  {appTitle}
+                </Text>
+                <Text size="xs" c="dimmed" className="mt-1 whitespace-pre-wrap">
+                  Drag, resize, or return to the source message without changing the thread layout.
+                </Text>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                {!expanded ? (
+                  <Button
+                    variant="subtle"
+                    size="compact-sm"
+                    leftSection={<IconGripHorizontal size={14} />}
+                    aria-label="Move app overlay"
+                    onPointerDown={handleMoveStart}
+                    onKeyDown={handleMoveKeyDown}
+                    onClick={(event) => event.preventDefault()}
+                  >
+                    Move
+                  </Button>
+                ) : null}
+                <Button
+                  variant="subtle"
+                  size="compact-sm"
+                  leftSection={<IconArrowDownRight size={14} />}
+                  onClick={onJumpToSource}
+                >
+                  Source
+                </Button>
+                <ActionIcon
+                  variant="subtle"
+                  size="lg"
+                  aria-label={expanded ? 'Restore overlay size' : 'Expand overlay'}
+                  onClick={() => onExpandedChange(!expanded)}
+                >
+                  {expanded ? <IconArrowsMinimize size={18} /> : <IconArrowsMaximize size={18} />}
+                </ActionIcon>
+                <ActionIcon
+                  variant="subtle"
+                  size="lg"
+                  aria-label="Minimize overlay"
+                  onClick={() => onMinimizeChange(true)}
+                >
+                  <IconPictureInPictureOn size={18} />
+                </ActionIcon>
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden p-3">
-          <div className="h-full overflow-y-auto rounded-[22px]">
+        <div className={cn('min-h-0 flex-1 overflow-hidden', isDrawingKit ? 'bg-[#fffdf4] p-0' : 'p-3')}>
+          <div className={cn('h-full overflow-y-auto', isDrawingKit ? '' : 'rounded-[22px]')}>
             <ChatBridgeMessagePart part={part} sessionId={sessionId} messageId={messageId} presentation="tray" />
           </div>
         </div>

@@ -222,10 +222,35 @@ describe('FloatingChatBridgeRuntimeShell', () => {
     )
 
     expect(onFrameChange).toHaveBeenCalledWith({
-      x: 376,
-      y: 136,
-      width: 560,
-      height: 560,
+      x: 216,
+      y: 24,
+      width: 720,
+      height: 672,
     })
+  })
+
+  it('renders Drawing Kit with a compact board-first overlay header', () => {
+    const { viewportElement, portalTarget } = createPortalElements()
+
+    render(
+      <MantineProvider>
+        <FloatingChatBridgeRuntimeShell
+          sessionId="session-1"
+          messageId="message-1"
+          part={createPart('drawing-kit')}
+          minimized={false}
+          expanded={false}
+          portalTarget={portalTarget}
+          viewportElement={viewportElement}
+          onMinimizeChange={vi.fn()}
+          onExpandedChange={vi.fn()}
+          onFrameChange={vi.fn()}
+          onJumpToSource={vi.fn()}
+        />
+      </MantineProvider>
+    )
+
+    expect(screen.getByText('Board-first overlay')).toBeTruthy()
+    expect(screen.queryByText('Floating app')).toBeNull()
   })
 })
