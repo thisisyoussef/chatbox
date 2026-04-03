@@ -87,6 +87,7 @@ describe('applyChessSnapshotToSession', () => {
       turn: 'black',
     })
     expect(updatedPart.summary).toContain('e4')
+    expect(updatedPart.summaryForModel).toBe(updatedPart.summary)
     expect(updated.chatBridgeAppRecords?.instances[0]).toMatchObject({
       id: 'chess-instance-1',
       status: 'active',
@@ -95,7 +96,7 @@ describe('applyChessSnapshotToSession', () => {
     expect(updated.chatBridgeAppRecords?.events.at(-1)).toMatchObject({
       kind: 'state.updated',
       sequence: 3,
-      summaryForModel: updatedPart.summary,
+      summaryForModel: updatedPart.summaryForModel,
     })
   })
 
