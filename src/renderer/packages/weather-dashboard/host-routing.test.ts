@@ -40,6 +40,12 @@ describe('interceptWeatherDashboardTurn', () => {
     expect(result).toBeNull()
   })
 
+  it('returns null for follow-up advice questions that only reference weather context', async () => {
+    const result = await interceptWeatherDashboardTurn([], makeUserMessage('What should I wear for this kind of weather?'))
+
+    expect(result).toBeNull()
+  })
+
   it('asks for a location when the prompt does not include one', async () => {
     const result = await interceptWeatherDashboardTurn([], makeUserMessage("What's the weather like today?"))
 
@@ -101,6 +107,17 @@ describe('interceptWeatherDashboardTurn', () => {
       request: 'weather',
       location: 'Portland, OR',
     })
+  })
+
+  it('ignores non-location follow-ups while a clarification is pending', async () => {
+    const clarification = (await interceptWeatherDashboardTurn([], makeUserMessage('weather')))!
+
+    const result = await interceptWeatherDashboardTurn(
+      [clarification],
+      makeUserMessage('What should I wear for this kind of weather?')
+    )
+
+    expect(result).toBeNull()
   })
 
   it('honors an explicit launch confirmation for a legacy route-ready receipt', async () => {

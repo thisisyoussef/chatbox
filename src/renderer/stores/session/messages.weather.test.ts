@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readChatBridgeReviewedAppLaunch } from '@shared/chatbridge'
 import { createMessage, type MessageAppPart, type Session } from '@shared/types'
+import { interceptWeatherDashboardTurn } from '@/packages/weather-dashboard/host-routing'
 import { submitNewUserMessage } from './messages'
 
 const { getSessionMock, getSessionSettingsMock, insertMessageMock, generateMock, runCompactionMock } = vi.hoisted(() => ({
@@ -177,5 +178,33 @@ describe('submitNewUserMessage weather interception', () => {
       request: 'open the weather app',
       location: 'Detroit, Michigan',
     })
+  })
+
+  it('keeps contextual follow-up advice questions in normal chat generation after a weather launch', async () => {
+    const priorWeatherLaunch = await interceptWeatherDashboardTurn(
+      [],
+      createMessage('user', 'whats the weather in Austin, Texas?'),
+      { sessionId: 'session-3' }
+    )
+
+    const session: Session = {
+      id: 'session-3',
+      name: 'Austin Weather',
+      type: 'chat',
+      messages: priorWeatherLaunch ? [priorWeatherLaunch] : [],
+    }
+    getSessionMock.mockResolvedValue(session)
+
+    await submitNewUserMessage(session.id, {
+      newUserMsg: createMessage('user', 'What should I wear for this kind of weather?'),
+      needGenerating: true,
+    })
+
+    expect(insertMessageMock).toHaveBeenCalledTimes(2)
+    expect(generateMock).toHaveBeenCalledTimes(1)
+
+    const assistantMessage = insertMessageMock.mock.calls[1][1]
+    expect(assistantMessage.generating).toBe(true)
+    expect(assistantMessage.contentParts).toEqual([])
   })
 })

@@ -21,3 +21,7 @@
   fallback for US city-plus-state inputs so free-form variants like `detroit
   michigan` and `Detroit, MI` can recover through validated city lookup before
   surfacing `location-not-found`.
+- 2026-04-03: Narrowed Weather Dashboard launch interception to explicit
+  weather-lookup intents and added place-sanity checks on derived location
+  hints so follow-up advice like `What should I wear for this kind of weather?`
+  stays in normal chat instead of reopening the dashboard with a fake location.

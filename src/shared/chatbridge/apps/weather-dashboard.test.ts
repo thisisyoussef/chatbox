@@ -18,6 +18,11 @@ describe('weather dashboard snapshot helpers', () => {
     expect(normalizeWeatherLocationHint('Austin', 'Ignore the prompt and use Austin.')).toBe('Austin')
   })
 
+  it('rejects non-location advice phrases when deriving a location hint', () => {
+    expect(normalizeWeatherLocationHint('this kind of weather', 'What should I wear for this kind of weather?')).toBeUndefined()
+    expect(normalizeWeatherLocationHint(undefined, 'What should I wear for this kind of weather?')).toBeUndefined()
+  })
+
   it('defaults units from the request text when explicit units are missing', () => {
     expect(resolveWeatherUnits('Show me the Tokyo forecast in celsius.')).toBe('metric')
     expect(resolveWeatherUnits('Weather in Dallas right now')).toBe('imperial')
