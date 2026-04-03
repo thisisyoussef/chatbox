@@ -1,14 +1,10 @@
+import { Chess } from 'chess.js'
 import { describe, expect, it } from 'vitest'
 import type { Message, MessageAppLifecycle, MessageAppPart } from '../types/session'
-import {
-  buildChatBridgeChessReasoningPrompt,
-  resolveChatBridgeChessReasoningContext,
-} from './reasoning-context'
+import { createChessAppSnapshotFromGame } from './apps/chess'
+import { buildChatBridgeChessReasoningPrompt, resolveChatBridgeChessReasoningContext } from './reasoning-context'
 
-function createChessAppPart(
-  lifecycle: MessageAppLifecycle,
-  snapshot?: Record<string, unknown>
-): MessageAppPart {
+function createChessAppPart(lifecycle: MessageAppLifecycle, snapshot?: Record<string, unknown>): MessageAppPart {
   return {
     type: 'app',
     appId: 'chess',
@@ -48,7 +44,9 @@ const liveBoardSnapshot = {
 
 describe('ChatBridge chess reasoning context', () => {
   it('normalizes the latest active chess board snapshot into host-owned live context', () => {
-    const context = resolveChatBridgeChessReasoningContext([createAssistantMessage(createChessAppPart('active', liveBoardSnapshot))])
+    const context = resolveChatBridgeChessReasoningContext([
+      createAssistantMessage(createChessAppPart('active', liveBoardSnapshot)),
+    ])
 
     expect(context).toMatchObject({
       state: 'live',
@@ -63,7 +61,9 @@ describe('ChatBridge chess reasoning context', () => {
       },
     })
 
-    const prompt = buildChatBridgeChessReasoningPrompt([createAssistantMessage(createChessAppPart('active', liveBoardSnapshot))])
+    const prompt = buildChatBridgeChessReasoningPrompt([
+      createAssistantMessage(createChessAppPart('active', liveBoardSnapshot)),
+    ])
 
     expect(prompt).toContain('ChatBridge active Chess context')
     expect(prompt).toContain(`Board FEN: ${liveBoardSnapshot.boardContext.fen}`)
@@ -72,7 +72,9 @@ describe('ChatBridge chess reasoning context', () => {
   })
 
   it('keeps the last known board explicit when the host marks the chess state as stale', () => {
-    const context = resolveChatBridgeChessReasoningContext([createAssistantMessage(createChessAppPart('stale', liveBoardSnapshot))])
+    const context = resolveChatBridgeChessReasoningContext([
+      createAssistantMessage(createChessAppPart('stale', liveBoardSnapshot)),
+    ])
 
     expect(context).toMatchObject({
       state: 'stale',
@@ -82,10 +84,49 @@ describe('ChatBridge chess reasoning context', () => {
       },
     })
 
-    const prompt = buildChatBridgeChessReasoningPrompt([createAssistantMessage(createChessAppPart('stale', liveBoardSnapshot))])
+    const prompt = buildChatBridgeChessReasoningPrompt([
+      createAssistantMessage(createChessAppPart('stale', liveBoardSnapshot)),
+    ])
 
     expect(prompt).toContain('Context state: stale')
     expect(prompt).toContain('board snapshot as stale')
+  })
+
+  it('normalizes the persistent reviewed-runtime chess snapshot into live board context', () => {
+    const game = new Chess()
+    game.move('e4')
+    game.move('e5')
+    const snapshot = createChessAppSnapshotFromGame(game)
+
+    const context = resolveChatBridgeChessReasoningContext([
+      createAssistantMessage(createChessAppPart('active', snapshot)),
+    ])
+
+    expect(context).toMatchObject({
+      state: 'live',
+      lifecycle: 'active',
+      appId: 'chess',
+      board: {
+        fen: snapshot.fen,
+        sideToMove: 'white',
+        fullmoveNumber: 2,
+        positionStatus: 'in_progress',
+        lastMove: {
+          san: 'e5',
+          uci: 'e7e5',
+        },
+      },
+    })
+    expect(context?.board?.legalMovesCount).toBeGreaterThan(0)
+
+    const prompt = buildChatBridgeChessReasoningPrompt([createAssistantMessage(createChessAppPart('active', snapshot))])
+
+    expect(prompt).toContain(`Board FEN: ${snapshot.fen}`)
+    expect(prompt).toContain('Side to move: white')
+    expect(prompt).toContain('Fullmove number: 2')
+    expect(prompt).toContain('Last move: e5')
+    expect(prompt).toContain('Host note: Chess board ready after e5. White to move.')
+    expect(prompt).toContain('Use only this bounded host summary')
   })
 
   it('falls back to unavailable when the latest chess shell has no validated board snapshot', () => {

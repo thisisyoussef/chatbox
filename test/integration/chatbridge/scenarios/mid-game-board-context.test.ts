@@ -1,10 +1,11 @@
 import '../setup'
 
+import { createChessAppSnapshotFromGame, getChessSummary } from '@shared/chatbridge/apps/chess'
+import type { CallChatCompletionOptions, ModelInterface } from '@shared/models/types'
+import type { Message, MessageAppPart, StreamTextResult } from '@shared/types'
 import type { ModelMessage } from 'ai'
+import { Chess } from 'chess.js'
 import { describe, expect, it, vi } from 'vitest'
-import type { ModelInterface } from '@shared/models/types'
-import type { CallChatCompletionOptions } from '@shared/models/types'
-import type { Message, StreamTextResult } from '@shared/types'
 import { streamText } from '@/packages/model-calls/stream-text'
 import { buildChatBridgeChessMidGameSessionFixture, createAppLifecycleMessage } from '../fixtures/app-aware-session'
 import { runChatBridgeScenarioTrace } from './scenario-tracing'
@@ -60,6 +61,21 @@ function traceScenario<T>(testCase: string, execute: () => Promise<T> | T) {
   )
 }
 
+function createPersistentChessPart(snapshot: ReturnType<typeof createChessAppSnapshotFromGame>): MessageAppPart {
+  return {
+    type: 'app',
+    appId: 'chess',
+    appName: 'Chess',
+    appInstanceId: 'chess-instance-persistent',
+    lifecycle: 'active',
+    title: 'Chess board',
+    description: 'The host kept the reviewed Chess runtime live in-thread.',
+    summary: getChessSummary(snapshot),
+    statusText: 'White to move',
+    snapshot,
+  }
+}
+
 describe('ChatBridge mid-game board context regression coverage', () => {
   it('injects the latest active chess board summary into the model path before chat execution', () =>
     traceScenario(
@@ -84,6 +100,58 @@ describe('ChatBridge mid-game board context regression coverage', () => {
         expect(systemPrompt).toContain('Board FEN: r1bqkbnr/ppp2ppp/2np4/4p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 6')
         expect(systemPrompt).toContain('Side to move: white')
         expect(systemPrompt).toContain('Host note: White to move in an Italian Game structure after ...e5.')
+        expect(systemPrompt).toContain('Use only this bounded host summary for position-specific chess advice.')
+      }
+    ))
+
+  it('injects the persisted reviewed-runtime chess snapshot into the model path before chat execution', () =>
+    traceScenario(
+      'injects the persisted reviewed-runtime chess snapshot into the model path before chat execution',
+      async () => {
+        const { chat, model } = createModelStub()
+        const game = new Chess()
+        game.move('e4')
+        game.move('e5')
+        const snapshot = createChessAppSnapshotFromGame(game)
+        const messages: Message[] = [
+          createTextMessage(
+            'msg-chess-persistent-system',
+            'system',
+            'Keep Chess reasoning grounded in host-owned context.',
+            1
+          ),
+          {
+            id: 'msg-chess-persistent-assistant',
+            role: 'assistant',
+            timestamp: 2,
+            contentParts: [
+              { type: 'text', text: 'The host kept the reviewed Chess board active in-thread.' },
+              createPersistentChessPart(snapshot),
+            ],
+          },
+          createTextMessage(
+            'msg-chess-persistent-follow-up',
+            'user',
+            'What should White focus on in this position?',
+            3
+          ),
+        ]
+
+        const result = await streamText(model, {
+          sessionId: 'session-chess-persistent',
+          messages,
+          onResultChangeWithCancel: vi.fn(),
+        })
+
+        expect(chat).toHaveBeenCalledOnce()
+
+        const systemPrompt = getInjectedSystemPrompt(result.coreMessages)
+
+        expect(systemPrompt).toContain('Context state: live')
+        expect(systemPrompt).toContain(`Board FEN: ${snapshot.fen}`)
+        expect(systemPrompt).toContain('Side to move: white')
+        expect(systemPrompt).toContain('Last move: e5')
+        expect(systemPrompt).toContain('Host note: Chess board ready after e5. White to move.')
         expect(systemPrompt).toContain('Use only this bounded host summary for position-specific chess advice.')
       }
     ))
