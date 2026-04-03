@@ -2,6 +2,7 @@ import NiceModal from '@ebay/nice-modal-react'
 import { ActionIcon, type ActionIconProps, Flex, Image as Img, Loader, Text, Tooltip as Tooltip1 } from '@mantine/core'
 import { Grid, Typography, useTheme } from '@mui/material'
 import Box from '@mui/material/Box'
+import { getChatBridgeRouteDecision } from '@shared/chatbridge'
 import type { Message, MessageAppPart, MessageContentParts, MessagePicture, MessageToolCallPart, SessionType } from '@shared/types'
 import { getMessageText } from '@shared/utils/message'
 import {
@@ -68,6 +69,12 @@ interface Props {
   small?: boolean
   assistantAvatarKey?: string
   sessionPicUrl?: string
+}
+
+function shouldRenderMessageAppPart(part: MessageAppPart): boolean {
+  const routeDecision = getChatBridgeRouteDecision(part)
+
+  return routeDecision?.kind !== 'refuse'
 }
 
 const _Message: FC<Props> = (props) => {
@@ -249,6 +256,26 @@ const _Message: FC<Props> = (props) => {
   }, [msg.contentParts, msg.role, msg])
 
   const contentParts = msg.contentParts || []
+  const renderableContentPartEntries = contentParts.flatMap((item, index) =>
+    item.type === 'app' && !shouldRenderMessageAppPart(item as MessageAppPart) ? [] : [{ item, index }]
+  )
+  const renderableContentParts = renderableContentPartEntries.map(({ item }) => item)
+  const visibleMessageText = useMemo(
+    () =>
+      getMessageText({
+        ...msg,
+        contentParts: renderableContentParts,
+      }),
+    [msg, renderableContentParts]
+  )
+  const shouldRenderMessageRow =
+    renderableContentParts.length > 0 ||
+    Boolean(msg.reasoningContent) ||
+    Boolean(msg.status?.length) ||
+    msg.generating === true ||
+    Boolean(msg.error) ||
+    Boolean(msg.files?.length) ||
+    Boolean(msg.links?.length)
 
   const CollapseButton = (
     <span
@@ -356,6 +383,10 @@ const _Message: FC<Props> = (props) => {
   )
   const [actionMenuOpened, setActionMenuOpened] = useState(false)
 
+  if (!shouldRenderMessageRow) {
+    return null
+  }
+
   return (
     <Box
       ref={ref}
@@ -422,13 +453,13 @@ const _Message: FC<Props> = (props) => {
                 {
                   // 这里的空行仅仅是为了在只发送文件时消息气泡的美观
                   // 正常情况下，应该考虑优化 msg-content 的样式。现在这里是一个临时的偷懒方式。
-                  getMessageText(msg, true, true).trim() === '' && <p></p>
+                  visibleMessageText.trim() === '' && (msg.files?.length || msg.links?.length) ? <p></p> : null
                 }
-                {contentParts && contentParts.length > 0 && (
+                {renderableContentParts.length > 0 && (
                   <div>
-                    {contentParts.map((item, index) =>
+                    {renderableContentPartEntries.map(({ item, index: originalIndex }) =>
                       item.type === 'reasoning' ? (
-                        <div key={`reasoning-${msg.id}-${index}`}>
+                        <div key={`reasoning-${msg.id}-${originalIndex}`}>
                           <ReasoningContentUI
                             message={msg}
                             part={item}
@@ -436,10 +467,10 @@ const _Message: FC<Props> = (props) => {
                           />
                         </div>
                       ) : item.type === 'text' ? (
-                        <div key={`text-${msg.id}-${index}`}>
+                        <div key={`text-${msg.id}-${originalIndex}`}>
                           {enableMarkdownRendering && !isCollapsed ? (
                             <Markdown
-                              uniqueId={`${msg.id}-${index}`}
+                              uniqueId={`${msg.id}-${originalIndex}`}
                               enableLaTeXRendering={enableLaTeXRendering}
                               enableMermaidRendering={enableMermaidRendering}
                               generating={msg.generating}
@@ -474,7 +505,7 @@ const _Message: FC<Props> = (props) => {
                         </Flex>
                       ) : item.type === 'app' ? (
                         <ChatBridgeMessagePart
-                          key={`app-${item.appInstanceId}-${index}`}
+                          key={`app-${item.appInstanceId}-${originalIndex}`}
                           part={item as MessageAppPart}
                           presentation={
                             floatedChatBridgeAppInstanceId &&
@@ -487,7 +518,7 @@ const _Message: FC<Props> = (props) => {
                           onOpenFloatingShell={onOpenFloatedChatBridgeApp}
                           onUpdatePart={(nextPart) => {
                             const nextContentParts = msg.contentParts.map((contentPart, contentPartIndex) =>
-                              contentPartIndex === index ? nextPart : contentPart
+                              contentPartIndex === originalIndex ? nextPart : contentPart
                             )
                             void modifyMessage(
                               sessionId,

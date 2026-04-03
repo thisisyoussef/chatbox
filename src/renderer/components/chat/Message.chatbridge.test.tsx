@@ -235,7 +235,7 @@ describe('Message chatbridge rendering', () => {
     expect(screen.queryByRole('button', { name: /g1, white knight/i })).toBeNull()
   })
 
-  it('keeps route receipts inline even when the floated instance id matches the message part', () => {
+  it('omits passive refusal route receipts from the visible timeline', () => {
     const routePart = createChatBridgeRouteMessagePart({
       schemaVersion: 2,
       hostRuntime: 'desktop-electron',
@@ -253,7 +253,7 @@ describe('Message chatbridge rendering', () => {
       timestamp: Date.now(),
     }
 
-    render(
+    const { container } = render(
       <MantineProvider>
         <MessageComponent
           sessionId="session-1"
@@ -268,10 +268,50 @@ describe('Message chatbridge rendering', () => {
       </MantineProvider>
     )
 
+    expect(container.querySelector('.msg-block')).toBeNull()
     expect(screen.queryByTestId('chatbridge-anchor')).toBeNull()
     expect(screen.queryByText('Focus app')).toBeNull()
+    expect(screen.queryByTestId('chatbridge-route-artifact')).toBeNull()
+    expect(screen.queryByText('Keep helping in chat')).toBeNull()
+  })
+
+  it('keeps actionable clarify route choices visible in the timeline', () => {
+    const routePart = createChatBridgeRouteMessagePart({
+      schemaVersion: 2,
+      hostRuntime: 'desktop-electron',
+      kind: 'clarify',
+      reasonCode: 'ambiguous-match',
+      prompt: 'Help me sketch a weather-themed poster.',
+      summary: 'This request could fit Drawing Kit or Weather Dashboard, so the host is asking before launching anything.',
+      selectedAppId: 'drawing-kit',
+      matches: [
+        {
+          appId: 'drawing-kit',
+          appName: 'Drawing Kit',
+          matchedContexts: [],
+          matchedTerms: ['sketch', 'poster'],
+          score: 7,
+          exactAppMatch: false,
+          exactToolMatch: false,
+        },
+      ],
+    })
+
+    const msg: Message = {
+      id: 'assistant-route-clarify-1',
+      role: 'assistant',
+      contentParts: [routePart],
+      timestamp: Date.now(),
+    }
+
+    render(
+      <MantineProvider>
+        <MessageComponent sessionId="session-1" sessionType="chat" msg={msg} buttonGroup="none" assistantAvatarKey="" />
+      </MantineProvider>
+    )
+
     expect(screen.getByTestId('chatbridge-route-artifact')).toBeTruthy()
-    expect(screen.getByText('Keep helping in chat')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Launch Drawing Kit' })).toBeTruthy()
   })
 
   it('persists degraded recovery acknowledgements through the existing message update path', () => {
