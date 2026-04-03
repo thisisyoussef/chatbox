@@ -3,6 +3,11 @@ import { z } from 'zod'
 export const WEATHER_DASHBOARD_APP_ID = 'weather-dashboard'
 export const WEATHER_DASHBOARD_APP_NAME = 'Weather Dashboard'
 export const WEATHER_DASHBOARD_SNAPSHOT_SCHEMA_VERSION = 1 as const
+export const WEATHER_DASHBOARD_FRESHNESS_MS = 10 * 60 * 1000
+export const WEATHER_DASHBOARD_HOURLY_LIMIT = 8
+export const WEATHER_DASHBOARD_DAILY_LIMIT = 6
+export const WEATHER_DASHBOARD_FORECAST_PREVIEW_LIMIT = 4
+export const WEATHER_DASHBOARD_ALERT_LIMIT = 3
 
 export const WeatherDashboardUnitsSchema = z.enum(['imperial', 'metric'])
 export type WeatherDashboardUnits = z.infer<typeof WeatherDashboardUnitsSchema>
@@ -46,6 +51,30 @@ export const WeatherDashboardForecastDaySchema = z
   .strict()
 export type WeatherDashboardForecastDay = z.infer<typeof WeatherDashboardForecastDaySchema>
 
+export const WeatherDashboardHourlyForecastSchema = z
+  .object({
+    timeKey: z.string().trim().min(1),
+    hourLabel: z.string().trim().min(1),
+    temperature: z.number(),
+    weatherCode: z.number().int().nonnegative(),
+    conditionLabel: z.string().trim().min(1),
+    precipitationChance: z.number().min(0).max(100).optional(),
+  })
+  .strict()
+export type WeatherDashboardHourlyForecast = z.infer<typeof WeatherDashboardHourlyForecastSchema>
+
+export const WeatherDashboardAlertSchema = z
+  .object({
+    source: z.string().trim().min(1),
+    event: z.string().trim().min(1),
+    startsAt: z.number().int().nonnegative(),
+    endsAt: z.number().int().nonnegative().optional(),
+    description: z.string().trim().min(1),
+    tags: z.array(z.string().trim().min(1)).max(6).default([]),
+  })
+  .strict()
+export type WeatherDashboardAlert = z.infer<typeof WeatherDashboardAlertSchema>
+
 export const WeatherDashboardDegradedStateSchema = z
   .object({
     reason: WeatherDashboardDegradedReasonSchema,
@@ -75,12 +104,26 @@ export const WeatherDashboardSnapshotSchema = z
     sourceLabel: z.string().trim().min(1),
     cacheStatus: WeatherDashboardCacheStatusSchema,
     refreshHint: z.string().trim().min(1),
+    fetchedAt: z.number().int().nonnegative(),
+    staleAt: z.number().int().nonnegative(),
     updatedAt: z.number().int().nonnegative(),
     current: WeatherDashboardCurrentConditionsSchema.optional(),
-    forecast: z.array(WeatherDashboardForecastDaySchema).max(4).default([]),
+    hourly: z.array(WeatherDashboardHourlyForecastSchema).max(WEATHER_DASHBOARD_HOURLY_LIMIT).default([]),
+    daily: z.array(WeatherDashboardForecastDaySchema).max(WEATHER_DASHBOARD_DAILY_LIMIT).default([]),
+    alerts: z.array(WeatherDashboardAlertSchema).max(WEATHER_DASHBOARD_ALERT_LIMIT).default([]),
+    forecast: z.array(WeatherDashboardForecastDaySchema).max(WEATHER_DASHBOARD_FORECAST_PREVIEW_LIMIT).default([]),
     degraded: WeatherDashboardDegradedStateSchema.optional(),
   })
   .strict()
+  .superRefine((snapshot, ctx) => {
+    if (snapshot.staleAt < snapshot.fetchedAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'staleAt cannot be earlier than fetchedAt',
+        path: ['staleAt'],
+      })
+    }
+  })
 export type WeatherDashboardSnapshot = z.infer<typeof WeatherDashboardSnapshotSchema>
 
 export const ChatBridgeWeatherDashboardQuerySchema = z
@@ -130,6 +173,30 @@ const WEATHER_CODE_LABELS: Record<number, string> = {
   95: 'Thunderstorm',
   96: 'Thunderstorm and hail',
   99: 'Severe thunderstorm and hail',
+  200: 'Thunderstorm',
+  201: 'Thunderstorm with rain',
+  202: 'Heavy thunderstorm',
+  230: 'Thunderstorm with drizzle',
+  300: 'Light drizzle',
+  301: 'Drizzle',
+  302: 'Heavy drizzle',
+  500: 'Light rain',
+  501: 'Moderate rain',
+  502: 'Heavy rain',
+  511: 'Freezing rain',
+  520: 'Rain showers',
+  600: 'Light snow',
+  601: 'Snow',
+  602: 'Heavy snow',
+  701: 'Mist',
+  711: 'Smoke',
+  721: 'Haze',
+  741: 'Fog',
+  800: 'Clear sky',
+  801: 'Few clouds',
+  802: 'Scattered clouds',
+  803: 'Broken clouds',
+  804: 'Overcast',
 }
 
 function capitalizeWords(value: string) {
@@ -208,6 +275,15 @@ export function getWeatherConditionLabel(weatherCode: number) {
   return WEATHER_CODE_LABELS[weatherCode] ?? 'Unknown conditions'
 }
 
+export function normalizeWeatherConditionLabel(weatherCode: number, description?: string) {
+  const explicitDescription = normalizeWhitespace(description ?? '')
+  if (explicitDescription) {
+    return capitalizeWords(explicitDescription)
+  }
+
+  return getWeatherConditionLabel(weatherCode)
+}
+
 export function formatWeatherTemperature(value: number, units: WeatherDashboardUnits) {
   return `${Math.round(value)}°${units === 'imperial' ? 'F' : 'C'}`
 }
@@ -230,6 +306,61 @@ export function formatWeatherUpdatedAt(updatedAt: number, timezone?: string) {
       minute: '2-digit',
     }).format(updatedAt)
   }
+}
+
+export function formatWeatherAlertTime(timestamp: number, timezone?: string) {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: timezone,
+      timeZoneName: timezone ? 'short' : undefined,
+    }).format(timestamp)
+  } catch {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(timestamp)
+  }
+}
+
+export function isWeatherDashboardSnapshotStale(
+  snapshot: Pick<WeatherDashboardSnapshot, 'fetchedAt' | 'staleAt'>,
+  options: { now?: number } = {}
+) {
+  const now = options.now ?? Date.now()
+  return snapshot.staleAt <= now
+}
+
+function resolveWeatherFreshnessWindow(input: {
+  fetchedAt?: number
+  staleAt?: number
+  updatedAt?: number
+}) {
+  const fetchedAt = input.fetchedAt ?? input.updatedAt ?? Date.now()
+  const staleAt = input.staleAt ?? fetchedAt + WEATHER_DASHBOARD_FRESHNESS_MS
+
+  return {
+    fetchedAt,
+    staleAt,
+  }
+}
+
+function buildWeatherFreshnessLabel(
+  freshness: { fetchedAt: number; staleAt: number },
+  timezone?: string,
+  referenceTime = Date.now()
+) {
+  const updatedAtLabel = formatWeatherUpdatedAt(freshness.fetchedAt, timezone)
+  const staleAtLabel = formatWeatherUpdatedAt(freshness.staleAt, timezone)
+
+  if (freshness.staleAt <= referenceTime) {
+    return `Updated ${updatedAtLabel} · freshness window passed at ${staleAtLabel}`
+  }
+
+  return `Updated ${updatedAtLabel} · fresh until ${staleAtLabel}`
 }
 
 function buildReadyStatusText(cacheStatus: WeatherDashboardCacheStatus) {
@@ -263,16 +394,25 @@ type CreateWeatherDashboardReadySnapshotInput = {
   timezone?: string
   units: WeatherDashboardUnits
   current: WeatherDashboardCurrentConditions
+  hourly?: WeatherDashboardHourlyForecast[]
+  daily?: WeatherDashboardForecastDay[]
+  alerts?: WeatherDashboardAlert[]
   forecast?: WeatherDashboardForecastDay[]
+  fetchedAt?: number
+  staleAt?: number
   updatedAt?: number
   cacheStatus?: Extract<WeatherDashboardCacheStatus, 'miss' | 'hit' | 'refreshed'>
+  referenceTime?: number
 }
 
 export function createWeatherDashboardReadySnapshot(
   input: CreateWeatherDashboardReadySnapshotInput
 ): WeatherDashboardSnapshot {
-  const updatedAt = input.updatedAt ?? Date.now()
-  const forecast = (input.forecast ?? []).slice(0, 4)
+  const freshness = resolveWeatherFreshnessWindow(input)
+  const referenceTime = input.referenceTime ?? Date.now()
+  const hourly = (input.hourly ?? []).slice(0, WEATHER_DASHBOARD_HOURLY_LIMIT)
+  const daily = (input.daily ?? input.forecast ?? []).slice(0, WEATHER_DASHBOARD_DAILY_LIMIT)
+  const forecast = (input.forecast ?? daily).slice(0, WEATHER_DASHBOARD_FORECAST_PREVIEW_LIMIT)
   const currentLine = `${formatWeatherTemperature(input.current.temperature, input.units)} and ${input.current.conditionLabel}`
   const feelsLikeLine =
     typeof input.current.apparentTemperature === 'number'
@@ -291,8 +431,25 @@ export function createWeatherDashboardReadySnapshot(
           )
           .join('; ')}.`
       : 'Short forecast is not available yet.'
+  const hourlyLine =
+    hourly.length > 0
+      ? `Next ${hourly.length} hours: ${hourly
+          .map(
+            (hour) =>
+              `${hour.hourLabel} ${formatWeatherTemperature(hour.temperature, input.units)} ${hour.conditionLabel}`
+          )
+          .join('; ')}.`
+      : 'Hourly outlook is not available yet.'
+  const alertLine =
+    (input.alerts ?? []).length > 0
+      ? `Active alerts: ${(input.alerts ?? [])
+          .slice(0, WEATHER_DASHBOARD_ALERT_LIMIT)
+          .map((alert) => `${alert.event} from ${alert.source}`)
+          .join('; ')}.`
+      : 'No active weather alerts.'
 
   const cacheStatus = input.cacheStatus ?? 'miss'
+  const stale = freshness.staleAt <= referenceTime
 
   return WeatherDashboardSnapshotSchema.parse({
     schemaVersion: WEATHER_DASHBOARD_SNAPSHOT_SCHEMA_VERSION,
@@ -303,19 +460,26 @@ export function createWeatherDashboardReadySnapshot(
     timezone: input.timezone,
     units: input.units,
     status: 'ready',
-    statusText: buildReadyStatusText(cacheStatus),
-    summary: `Weather Dashboard is active for ${input.locationName}. Current conditions are ${currentLine}. ${feelsLikeLine} ${windLine} ${forecastLine}`.replace(
+    statusText: stale ? 'Weather may be stale' : buildReadyStatusText(cacheStatus),
+    summary: `Weather Dashboard is active for ${input.locationName}. Current conditions are ${currentLine}. ${feelsLikeLine} ${windLine} ${hourlyLine} ${forecastLine} ${alertLine} ${stale ? 'This snapshot is older than the host freshness window.' : `Freshness window lasts until ${formatWeatherUpdatedAt(freshness.staleAt, input.timezone)}.`}`.replace(
       /\s+/g,
       ' '
     ).trim(),
     headline: currentLine,
-    dataStateLabel: buildReadyDataStateLabel(cacheStatus),
-    lastUpdatedLabel: `Updated ${formatWeatherUpdatedAt(updatedAt, input.timezone)}`,
+    dataStateLabel: stale ? 'Host snapshot stale' : buildReadyDataStateLabel(cacheStatus),
+    lastUpdatedLabel: buildWeatherFreshnessLabel(freshness, input.timezone, referenceTime),
     sourceLabel: 'Host weather boundary',
     cacheStatus,
-    refreshHint: 'Refresh weather to recheck the host-owned upstream snapshot.',
-    updatedAt,
+    refreshHint: stale
+      ? 'Refresh weather because this snapshot is older than the host freshness window.'
+      : 'Refresh weather to recheck the host-owned upstream snapshot.',
+    fetchedAt: freshness.fetchedAt,
+    staleAt: freshness.staleAt,
+    updatedAt: freshness.fetchedAt,
     current: input.current,
+    hourly,
+    daily,
+    alerts: (input.alerts ?? []).slice(0, WEATHER_DASHBOARD_ALERT_LIMIT),
     forecast,
   })
 }
@@ -324,13 +488,15 @@ type CreateWeatherDashboardLoadingSnapshotInput = {
   request?: string
   locationQuery?: string
   units?: WeatherDashboardUnits
+  fetchedAt?: number
+  staleAt?: number
   updatedAt?: number
 }
 
 export function createWeatherDashboardLoadingSnapshot(
   input: CreateWeatherDashboardLoadingSnapshotInput = {}
 ): WeatherDashboardSnapshot {
-  const updatedAt = input.updatedAt ?? Date.now()
+  const freshness = resolveWeatherFreshnessWindow(input)
   const locationName = input.locationQuery?.trim() || 'Resolving location'
 
   return WeatherDashboardSnapshotSchema.parse({
@@ -349,7 +515,12 @@ export function createWeatherDashboardLoadingSnapshot(
     sourceLabel: 'Host weather boundary',
     cacheStatus: 'none',
     refreshHint: 'Weather details will appear here after the host finishes fetching them.',
-    updatedAt,
+    fetchedAt: freshness.fetchedAt,
+    staleAt: freshness.staleAt,
+    updatedAt: freshness.fetchedAt,
+    hourly: [],
+    daily: [],
+    alerts: [],
     forecast: [],
   })
 }
@@ -358,6 +529,8 @@ type CreateWeatherDashboardUnavailableSnapshotInput = {
   request?: string
   locationQuery?: string
   units?: WeatherDashboardUnits
+  fetchedAt?: number
+  staleAt?: number
   updatedAt?: number
   reason: Extract<WeatherDashboardDegradedReason, 'missing-location' | 'location-not-found'>
 }
@@ -365,7 +538,7 @@ type CreateWeatherDashboardUnavailableSnapshotInput = {
 export function createWeatherDashboardUnavailableSnapshot(
   input: CreateWeatherDashboardUnavailableSnapshotInput
 ): WeatherDashboardSnapshot {
-  const updatedAt = input.updatedAt ?? Date.now()
+  const freshness = resolveWeatherFreshnessWindow(input)
   const locationName = input.locationQuery?.trim() || 'Weather Dashboard'
   const degraded =
     input.reason === 'missing-location'
@@ -400,7 +573,12 @@ export function createWeatherDashboardUnavailableSnapshot(
     sourceLabel: 'Host weather boundary',
     cacheStatus: 'none',
     refreshHint: 'Ask for weather in a clearer city or region to retry.',
-    updatedAt,
+    fetchedAt: freshness.fetchedAt,
+    staleAt: freshness.staleAt,
+    updatedAt: freshness.fetchedAt,
+    hourly: [],
+    daily: [],
+    alerts: [],
     forecast: [],
     degraded,
   })
@@ -413,16 +591,26 @@ type CreateWeatherDashboardDegradedSnapshotInput = {
   timezone?: string
   units: WeatherDashboardUnits
   degraded: WeatherDashboardDegradedState
+  hourly?: WeatherDashboardHourlyForecast[]
+  daily?: WeatherDashboardForecastDay[]
+  alerts?: WeatherDashboardAlert[]
+  fetchedAt?: number
+  staleAt?: number
   updatedAt?: number
   current?: WeatherDashboardCurrentConditions
   forecast?: WeatherDashboardForecastDay[]
+  referenceTime?: number
 }
 
 export function createWeatherDashboardDegradedSnapshot(
   input: CreateWeatherDashboardDegradedSnapshotInput
 ): WeatherDashboardSnapshot {
-  const updatedAt = input.updatedAt ?? Date.now()
-  const forecast = (input.forecast ?? []).slice(0, 4)
+  const freshness = resolveWeatherFreshnessWindow(input)
+  const referenceTime = input.referenceTime ?? Date.now()
+  const hourly = (input.hourly ?? []).slice(0, WEATHER_DASHBOARD_HOURLY_LIMIT)
+  const daily = (input.daily ?? input.forecast ?? []).slice(0, WEATHER_DASHBOARD_DAILY_LIMIT)
+  const forecast = (input.forecast ?? daily).slice(0, WEATHER_DASHBOARD_FORECAST_PREVIEW_LIMIT)
+  const alerts = (input.alerts ?? []).slice(0, WEATHER_DASHBOARD_ALERT_LIMIT)
   const staleSummary =
     input.degraded.usingStaleSnapshot && input.current
       ? `The host kept the last good snapshot for ${input.locationName}: ${formatWeatherTemperature(input.current.temperature, input.units)} and ${input.current.conditionLabel}.`
@@ -441,16 +629,22 @@ export function createWeatherDashboardDegradedSnapshot(
     summary: `${staleSummary} ${input.degraded.message}`.replace(/\s+/g, ' ').trim(),
     headline: input.degraded.usingStaleSnapshot ? 'Fresh weather unavailable' : input.degraded.title,
     dataStateLabel: input.degraded.usingStaleSnapshot ? 'Using last good host snapshot' : 'Upstream weather unavailable',
-    lastUpdatedLabel: input.degraded.usingStaleSnapshot
-      ? `Last good snapshot from ${formatWeatherUpdatedAt(updatedAt, input.timezone)}`
-      : 'No fresh host snapshot available',
+    lastUpdatedLabel:
+      input.degraded.usingStaleSnapshot && input.current
+        ? buildWeatherFreshnessLabel(freshness, input.timezone, referenceTime)
+        : 'No fresh host snapshot available',
     sourceLabel: 'Host weather boundary',
     cacheStatus: input.degraded.usingStaleSnapshot ? 'stale-fallback' : 'none',
     refreshHint: input.degraded.retryable
       ? 'Refresh weather to ask the host for a new upstream snapshot.'
       : 'Adjust the request and try again.',
-    updatedAt,
+    fetchedAt: freshness.fetchedAt,
+    staleAt: freshness.staleAt,
+    updatedAt: freshness.fetchedAt,
     current: input.current,
+    hourly,
+    daily,
+    alerts,
     forecast,
     degraded: input.degraded,
   })
