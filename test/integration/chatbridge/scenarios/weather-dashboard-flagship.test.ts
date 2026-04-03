@@ -338,4 +338,137 @@ describe('ChatBridge Weather Dashboard flagship lifecycle', () => {
       })
       expect(getLaunchPart(degraded).summaryForModel).toContain('last good snapshot')
     }))
+
+  it('updates follow-up weather context after the active session changes location', () =>
+    traceScenario('updates follow-up weather context after the active session changes location', () => {
+      const { session, launchPart } = createSessionWithLaunchPart()
+
+      const bootstrapped = applyReviewedAppLaunchBootstrapToSession(session, {
+        messageId: 'assistant-reviewed-weather-scenario-1',
+        part: launchPart,
+        bridgeSessionId: 'bridge-session-reviewed-weather-scenario-3',
+        now: () => 30_000,
+        createId: () => 'event-reviewed-weather-created-3',
+      })
+
+      const readied = applyReviewedAppLaunchBridgeReadyToSession(bootstrapped, {
+        messageId: 'assistant-reviewed-weather-scenario-1',
+        part: getLaunchPart(bootstrapped),
+        event: {
+          kind: 'app.ready',
+          bridgeSessionId: 'bridge-session-reviewed-weather-scenario-3',
+          appInstanceId: launchPart.appInstanceId,
+          bridgeToken: 'bridge-token-reviewed-weather-scenario-3',
+          ackNonce: 'bridge-nonce-reviewed-weather-scenario-3',
+          sequence: 1,
+        },
+        now: () => 31_000,
+        createId: () => 'event-reviewed-weather-ready-3',
+      })
+
+      const chicagoSnapshot = createWeatherDashboardReadySnapshot({
+        request: 'Open Weather Dashboard for Chicago and show the forecast.',
+        locationQuery: 'Chicago',
+        locationName: 'Chicago, Illinois, United States',
+        timezone: 'America/Chicago',
+        units: 'imperial',
+        fetchedAt: 32_000,
+        staleAt: 632_000,
+        referenceTime: 33_000,
+        cacheStatus: 'miss',
+        current: {
+          temperature: 72,
+          apparentTemperature: 70,
+          weatherCode: 1,
+          conditionLabel: 'Mostly clear',
+          windSpeed: 9,
+        },
+      })
+
+      const withChicago = applyReviewedAppLaunchBridgeEventToSession(readied, {
+        messageId: 'assistant-reviewed-weather-scenario-1',
+        part: getLaunchPart(readied),
+        event: {
+          kind: 'app.state',
+          bridgeSessionId: 'bridge-session-reviewed-weather-scenario-3',
+          appInstanceId: launchPart.appInstanceId,
+          bridgeToken: 'bridge-token-reviewed-weather-scenario-3',
+          sequence: 2,
+          idempotencyKey: 'state-reviewed-weather-scenario-4',
+          snapshot: chicagoSnapshot,
+        },
+        now: () => 32_000,
+        createId: () => 'event-reviewed-weather-state-3',
+      })
+
+      const denverSnapshot = createWeatherDashboardReadySnapshot({
+        request: 'Open Weather Dashboard for Denver and show the forecast.',
+        locationQuery: 'Denver',
+        locationName: 'Denver, Colorado, United States',
+        timezone: 'America/Denver',
+        units: 'imperial',
+        fetchedAt: 34_000,
+        staleAt: 634_000,
+        referenceTime: 35_000,
+        cacheStatus: 'refreshed',
+        current: {
+          temperature: 61,
+          apparentTemperature: 59,
+          weatherCode: 2,
+          conditionLabel: 'Partly cloudy',
+          windSpeed: 8,
+        },
+      })
+
+      const withDenver = applyReviewedAppLaunchBridgeEventToSession(withChicago, {
+        messageId: 'assistant-reviewed-weather-scenario-1',
+        part: getLaunchPart(withChicago),
+        event: {
+          kind: 'app.state',
+          bridgeSessionId: 'bridge-session-reviewed-weather-scenario-3',
+          appInstanceId: launchPart.appInstanceId,
+          bridgeToken: 'bridge-token-reviewed-weather-scenario-3',
+          sequence: 3,
+          idempotencyKey: 'state-reviewed-weather-scenario-5',
+          snapshot: denverSnapshot,
+        },
+        now: () => 34_000,
+        createId: () => 'event-reviewed-weather-state-4',
+      })
+
+      const compactedSummary: Message = {
+        id: 'summary-reviewed-weather-scenario-2',
+        role: 'assistant',
+        timestamp: 35_000,
+        isSummary: true,
+        contentParts: [{ type: 'text', text: 'Compacted summary of earlier Weather Dashboard continuity.' }],
+      }
+      const followUp = createMessage('weather-follow-up-user-2', 'user', 'Will it rain in the weather you just showed me?')
+      const compactionPoints: CompactionPoint[] = [
+        {
+          summaryMessageId: compactedSummary.id,
+          boundaryMessageId: 'assistant-reviewed-weather-scenario-1',
+          createdAt: 35_000,
+        },
+      ]
+      const context = buildContextForAI({
+        messages: [...withDenver.messages, followUp, compactedSummary],
+        compactionPoints,
+      })
+
+      const injectedContext = context.find((message) => message.id.startsWith(CHATBRIDGE_APP_CONTEXT_MESSAGE_PREFIX))
+      const text = (injectedContext?.contentParts[0] as { text?: string } | undefined)?.text ?? ''
+
+      expect(text).toContain('Denver, Colorado, United States')
+      expect(text).toContain('Partly cloudy')
+      expect(text).not.toContain('Chicago, Illinois, United States')
+      expect(getLaunchPart(withDenver)).toMatchObject({
+        lifecycle: 'active',
+        statusText: 'Weather refreshed',
+        snapshot: {
+          locationName: 'Denver, Colorado, United States',
+          cacheStatus: 'refreshed',
+        },
+      })
+    }))
 })

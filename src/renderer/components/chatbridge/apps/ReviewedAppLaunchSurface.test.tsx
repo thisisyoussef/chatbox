@@ -38,76 +38,7 @@ const mocks = vi.hoisted(() => {
 
       return baseSession
     }),
-    invoke: vi.fn(async (channel: string) => {
-      if (channel === 'chatbridge-weather:get-dashboard') {
-        return {
-          snapshot: {
-            schemaVersion: 1,
-            appId: 'weather-dashboard',
-            request: 'Open Weather Dashboard for Chicago and show the forecast.',
-            locationQuery: 'Chicago',
-            locationName: 'Chicago, Illinois, United States',
-            timezone: 'America/Chicago',
-            units: 'imperial',
-            status: 'ready',
-            statusText: 'Live weather',
-            summary:
-              'Weather Dashboard is active for Chicago, Illinois, United States. Current conditions are 72°F and Mostly clear.',
-            headline: '72°F and Mostly clear',
-            dataStateLabel: 'Fresh host snapshot',
-            lastUpdatedLabel: 'Updated 2:15 PM CDT',
-            sourceLabel: 'Host weather boundary',
-            cacheStatus: 'miss',
-            refreshHint: 'Refresh weather to recheck the host-owned upstream snapshot.',
-            fetchedAt: 1717000000000,
-            staleAt: 1717000600000,
-            updatedAt: 1717000000000,
-            current: {
-              temperature: 72,
-              apparentTemperature: 70,
-              weatherCode: 1,
-              conditionLabel: 'Mostly clear',
-              windSpeed: 9,
-            },
-            hourly: [
-              {
-                timeKey: '2026-04-02T19:00:00.000Z',
-                hourLabel: '2 PM',
-                temperature: 72,
-                weatherCode: 1,
-                conditionLabel: 'Mostly clear',
-                precipitationChance: 10,
-              },
-            ],
-            daily: [
-              {
-                dateKey: '2026-04-02',
-                dayLabel: 'Thu',
-                high: 74,
-                low: 58,
-                weatherCode: 1,
-                conditionLabel: 'Mostly clear',
-                precipitationChance: 10,
-              },
-            ],
-            alerts: [],
-            forecast: [
-              {
-                dateKey: '2026-04-02',
-                dayLabel: 'Thu',
-                high: 74,
-                low: 58,
-                weatherCode: 1,
-                conditionLabel: 'Mostly clear',
-                precipitationChance: 10,
-              },
-            ],
-          },
-        }
-      }
-
-      throw new Error(`Unexpected channel: ${channel}`)
-    }),
+    invoke: vi.fn(),
   }
 })
 
@@ -127,6 +58,81 @@ vi.mock('@/stores/chatStore', () => ({
 }))
 
 import { ReviewedAppLaunchSurface } from './ReviewedAppLaunchSurface'
+
+function createWeatherSnapshot(options: {
+  request?: string
+  locationQuery: string
+  locationName: string
+  headline: string
+  conditionLabel: string
+  temperature: number
+  cacheStatus?: 'miss' | 'refreshed'
+  statusText?: string
+}) {
+  const cacheStatus = options.cacheStatus ?? 'miss'
+
+  return {
+    schemaVersion: 1,
+    appId: 'weather-dashboard',
+    request: options.request ?? `Open Weather Dashboard for ${options.locationQuery} and show the forecast.`,
+    locationQuery: options.locationQuery,
+    locationName: options.locationName,
+    timezone: options.locationQuery === 'Denver' ? 'America/Denver' : 'America/Chicago',
+    units: 'imperial' as const,
+    status: 'ready' as const,
+    statusText: options.statusText ?? (cacheStatus === 'refreshed' ? 'Weather refreshed' : 'Live weather'),
+    summary: `Weather Dashboard is active for ${options.locationName}. Current conditions are ${options.headline}.`,
+    headline: options.headline,
+    dataStateLabel: cacheStatus === 'refreshed' ? 'Fresh upstream refresh' : 'Fresh host snapshot',
+    lastUpdatedLabel: cacheStatus === 'refreshed' ? 'Updated 2:20 PM MDT' : 'Updated 2:15 PM CDT',
+    sourceLabel: 'Host weather boundary',
+    cacheStatus,
+    refreshHint: 'Refresh weather to recheck the host-owned upstream snapshot.',
+    fetchedAt: cacheStatus === 'refreshed' ? 1717000300000 : 1717000000000,
+    staleAt: cacheStatus === 'refreshed' ? 1717000900000 : 1717000600000,
+    updatedAt: cacheStatus === 'refreshed' ? 1717000300000 : 1717000000000,
+    current: {
+      temperature: options.temperature,
+      apparentTemperature: options.temperature - 2,
+      weatherCode: 1,
+      conditionLabel: options.conditionLabel,
+      windSpeed: 9,
+    },
+    hourly: [
+      {
+        timeKey: '2026-04-02T19:00:00.000Z',
+        hourLabel: '2 PM',
+        temperature: options.temperature,
+        weatherCode: 1,
+        conditionLabel: options.conditionLabel,
+        precipitationChance: 10,
+      },
+    ],
+    daily: [
+      {
+        dateKey: '2026-04-02',
+        dayLabel: 'Thu',
+        high: options.temperature + 2,
+        low: options.temperature - 14,
+        weatherCode: 1,
+        conditionLabel: options.conditionLabel,
+        precipitationChance: 10,
+      },
+    ],
+    alerts: [],
+    forecast: [
+      {
+        dateKey: '2026-04-02',
+        dayLabel: 'Thu',
+        high: options.temperature + 2,
+        low: options.temperature - 14,
+        weatherCode: 1,
+        conditionLabel: options.conditionLabel,
+        precipitationChance: 10,
+      },
+    ],
+  }
+}
 
 function createReviewedLaunchPart(): MessageAppPart {
   return {
@@ -209,6 +215,38 @@ describe('ReviewedAppLaunchSurface', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.invoke.mockImplementation(async (channel: string, query?: { location?: string; refresh?: boolean }) => {
+      if (channel !== 'chatbridge-weather:get-dashboard') {
+        throw new Error(`Unexpected channel: ${channel}`)
+      }
+
+      const location = query?.location?.trim() || 'Chicago'
+      const cacheStatus = query?.refresh ? 'refreshed' : 'miss'
+
+      if (location.toLowerCase() === 'denver') {
+        return {
+          snapshot: createWeatherSnapshot({
+            locationQuery: 'Denver',
+            locationName: 'Denver, Colorado, United States',
+            headline: '61°F and Partly cloudy',
+            conditionLabel: 'Partly cloudy',
+            temperature: 61,
+            cacheStatus,
+          }),
+        }
+      }
+
+      return {
+        snapshot: createWeatherSnapshot({
+          locationQuery: 'Chicago',
+          locationName: 'Chicago, Illinois, United States',
+          headline: '72°F and Mostly clear',
+          conditionLabel: 'Mostly clear',
+          temperature: 72,
+          cacheStatus,
+        }),
+      }
+    })
     Object.defineProperty(window, 'electronAPI', {
       value: {
         invoke: mocks.invoke,
@@ -327,5 +365,71 @@ describe('ReviewedAppLaunchSurface', () => {
       )
     })
     expect(mocks.createBridgeHostController).not.toHaveBeenCalled()
+  })
+
+  it('keeps the latest selected location active for later refreshes', async () => {
+    const { getByLabelText, getByRole, findByText } = render(
+      <MantineProvider>
+        <ReviewedAppLaunchSurface
+          part={createWeatherReviewedLaunchPart()}
+          sessionId="session-reviewed-launch-weather-1"
+          messageId="assistant-reviewed-launch-weather-1"
+        />
+      </MantineProvider>
+    )
+
+    await findByText('Chicago, Illinois, United States')
+
+    fireEvent.change(getByLabelText(/location/i), {
+      target: {
+        value: 'Denver',
+      },
+    })
+    fireEvent.click(getByRole('button', { name: /update location/i }))
+
+    await findByText('Denver, Colorado, United States')
+
+    fireEvent.click(getByRole('button', { name: /refresh weather/i }))
+
+    await waitFor(() => {
+      expect(mocks.invoke).toHaveBeenLastCalledWith(
+        'chatbridge-weather:get-dashboard',
+        expect.objectContaining({
+          location: 'Denver',
+          refresh: true,
+        })
+      )
+    })
+  })
+
+  it('resumes the weather surface from the latest persisted snapshot location', async () => {
+    const part = createWeatherReviewedLaunchPart()
+    part.snapshot = createWeatherSnapshot({
+      locationQuery: 'Denver',
+      locationName: 'Denver, Colorado, United States',
+      headline: '61°F and Partly cloudy',
+      conditionLabel: 'Partly cloudy',
+      temperature: 61,
+    })
+
+    render(
+      <MantineProvider>
+        <ReviewedAppLaunchSurface
+          part={part}
+          sessionId="session-reviewed-launch-weather-1"
+          messageId="assistant-reviewed-launch-weather-1"
+        />
+      </MantineProvider>
+    )
+
+    await waitFor(() => {
+      expect(mocks.invoke).toHaveBeenCalledWith(
+        'chatbridge-weather:get-dashboard',
+        expect.objectContaining({
+          location: 'Denver',
+          refresh: false,
+        })
+      )
+    })
   })
 })
