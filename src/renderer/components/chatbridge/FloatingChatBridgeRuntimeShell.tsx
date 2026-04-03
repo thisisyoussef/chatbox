@@ -43,18 +43,13 @@ export function FloatingChatBridgeRuntimeShell({
         className="border-t border-chatbox-border-primary bg-chatbox-background-primary px-3 py-2 shadow-[0_-10px_30px_rgba(15,23,42,0.08)]"
       >
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <div className="min-w-0">
-            <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-              Runtime tray
-            </Text>
-            <Text size="sm" fw={600} className="truncate text-chatbox-primary">
-              {part.appName || part.appId}
-            </Text>
-          </div>
+          <Text size="sm" fw={600} className="min-w-0 truncate text-chatbox-primary">
+            {part.appName || part.appId}
+          </Text>
           <div className="flex items-center gap-2">
-            <Button variant="subtle" size="compact-sm" onClick={onJumpToSource}>
-              Source message
-            </Button>
+            <ActionIcon variant="subtle" size="lg" aria-label="Source message" onClick={onJumpToSource}>
+              <IconArrowDownRight size={18} />
+            </ActionIcon>
             <Button variant="light" size="compact-sm" onClick={() => onMinimizeChange(false)}>
               Restore app
             </Button>
@@ -76,29 +71,11 @@ export function FloatingChatBridgeRuntimeShell({
       )}
     >
       <div className="mx-auto max-w-5xl">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-              {isSmallScreen ? 'App sheet' : 'App tray'}
-            </Text>
-            <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
-              {part.appName || part.appId}
-            </Text>
-            <Text size="xs" c="dimmed" className="mt-1 whitespace-pre-wrap">
-              {isSmallScreen
-                ? 'The active runtime stays anchored above the composer while chat continues.'
-                : 'The active runtime stays split from scrollback so chat commands do not bury the app.'}
-            </Text>
-          </div>
+        <div className="mb-2 flex items-center justify-end gap-2">
+          <ActionIcon variant="subtle" size="lg" aria-label="Source message" onClick={onJumpToSource}>
+            <IconArrowDownRight size={18} />
+          </ActionIcon>
           <div className="flex shrink-0 items-center gap-2">
-            <Button
-              variant="subtle"
-              size="compact-sm"
-              leftSection={<IconArrowDownRight size={14} />}
-              onClick={onJumpToSource}
-            >
-              Source
-            </Button>
             <ActionIcon
               variant="subtle"
               size="lg"

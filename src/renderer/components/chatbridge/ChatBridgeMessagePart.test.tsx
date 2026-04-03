@@ -232,16 +232,17 @@ function createRefuseRoutePart(): MessageAppPart {
 }
 
 describe('ChatBridgeMessagePart chess runtime', () => {
-  it('renders the playable chess board inside the active host shell', () => {
+  it('renders the playable chess board as a direct app surface', () => {
     render(
       <MantineProvider>
         <ChatBridgeMessagePart part={createChessPart()} />
       </MantineProvider>
     )
 
-    expect(screen.getByTestId('chatbridge-shell').getAttribute('data-state')).toBe('active')
+    expect(screen.getByTestId('chatbridge-app-surface')).toBeTruthy()
+    expect(screen.queryByTestId('chatbridge-shell')).toBeNull()
     expect(screen.getByRole('button', { name: /g1, white knight/i })).toBeTruthy()
-    expect(screen.getByText('Select a piece, then choose a legal destination square.')).toBeTruthy()
+    expect(screen.getByText('Select a piece, then click a destination square.')).toBeTruthy()
   })
 
   it('renders legacy runtime pieces with stable white and black glyph colors', () => {
@@ -433,14 +434,15 @@ describe('ChatBridgeMessagePart route artifacts', () => {
 })
 
 describe('ChatBridgeMessagePart Story Builder surface', () => {
-  it('renders the Story Builder writing desk inside the host shell', () => {
+  it('renders the Story Builder writing desk as a direct app surface', () => {
     render(
       <MantineProvider>
         <ChatBridgeMessagePart part={createStoryBuilderPart('active')} />
       </MantineProvider>
     )
 
-    expect(screen.getByTestId('chatbridge-shell').getAttribute('data-state')).toBe('active')
+    expect(screen.getByTestId('chatbridge-app-surface')).toBeTruthy()
+    expect(screen.queryByTestId('chatbridge-shell')).toBeNull()
     expect(screen.getByTestId('story-builder-panel')).toBeTruthy()
     expect(screen.getByText('Storm Lantern')).toBeTruthy()
     expect(screen.getByText('Drive connected')).toBeTruthy()
@@ -454,8 +456,9 @@ describe('ChatBridgeMessagePart Story Builder surface', () => {
       </MantineProvider>
     )
 
-    expect(screen.getByTestId('chatbridge-shell').getAttribute('data-state')).toBe('complete')
-    expect(screen.getByText('Draft handoff')).toBeTruthy()
+    expect(screen.getByTestId('chatbridge-app-surface')).toBeTruthy()
+    expect(screen.queryByTestId('chatbridge-shell')).toBeNull()
+    expect(screen.getByText('Completion handoff')).toBeTruthy()
     expect(screen.getByText('Draft returned to chat')).toBeTruthy()
     expect(screen.getByText(/continue with chapter five/i)).toBeTruthy()
   })

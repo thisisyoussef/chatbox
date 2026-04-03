@@ -63,9 +63,9 @@ describe('WeatherDashboardPanel', () => {
 
     expect(screen.getByText('Chicago')).toBeTruthy()
     expect(screen.getByText('Fetching latest conditions')).toBeTruthy()
-    expect(screen.getByText('The host is fetching current conditions.')).toBeTruthy()
-    expect(screen.getByText('Hourly outlook will populate after the host returns the forecast.')).toBeTruthy()
-    expect(screen.getByText('Daily outlook will populate after the host returns the forecast.')).toBeTruthy()
+    expect(screen.getByText('Current conditions are loading.')).toBeTruthy()
+    expect(screen.getByText('Hourly outlook will populate when the forecast finishes loading.')).toBeTruthy()
+    expect(screen.getByText('Daily outlook will populate when the forecast finishes loading.')).toBeTruthy()
   })
 
   it('renders the ready dashboard with freshness, hourly, daily, and alert sections', () => {

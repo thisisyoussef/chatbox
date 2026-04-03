@@ -58,6 +58,22 @@ export interface ChatBridgeShellViewModel {
   recoveryActions?: ChatBridgeShellAction[]
 }
 
+export function shouldRenderChatBridgeSurfaceOnly(options: {
+  part: MessageAppPart
+  state: ChatBridgeShellState
+  hasSurface: boolean
+}) {
+  if (!options.hasSurface) {
+    return false
+  }
+
+  if (getChatBridgeRouteDecision(options.part)) {
+    return false
+  }
+
+  return options.state !== 'degraded' && options.state !== 'error'
+}
+
 function mapRecoveryActions(
   actions: DegradedRecoveryAction[],
   requestedActionId?: string

@@ -62,8 +62,10 @@ describe('FloatingChatBridgeRuntimeShell', () => {
     )
 
     expect(screen.getByTestId('chatbridge-floating-runtime-shell')).toBeTruthy()
-    expect(screen.getByText('App tray')).toBeTruthy()
+    expect(screen.queryByText('App tray')).toBeNull()
+    expect(screen.getByRole('button', { name: /source message/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /minimize app tray/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /g1, white knight/i })).toBeTruthy()
   })
 
   it('renders a compact restore bar when minimized', () => {
