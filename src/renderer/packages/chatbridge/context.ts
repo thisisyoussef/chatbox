@@ -78,10 +78,7 @@ function createInjectedAppContextMessage(selection: ChatBridgeSelectedAppContext
   }
 }
 
-function sanitizeChatBridgeAppParts(
-  contextMessages: Message[],
-  selected: ChatBridgeSelectedAppContext[]
-): Message[] {
+function sanitizeChatBridgeAppParts(contextMessages: Message[], selected: ChatBridgeSelectedAppContext[]): Message[] {
   return contextMessages.map((message) => {
     let changed = false
 
@@ -119,10 +116,7 @@ function sanitizeChatBridgeAppParts(
   })
 }
 
-export function applyChatBridgeAppContext(
-  contextMessages: Message[],
-  sourceMessages: Message[]
-): Message[] {
+export function applyChatBridgeAppContext(contextMessages: Message[], sourceMessages: Message[]): Message[] {
   const selected = selectChatBridgeAppContexts(sourceMessages)
   const sanitizedMessages = sanitizeChatBridgeAppParts(contextMessages, selected)
 

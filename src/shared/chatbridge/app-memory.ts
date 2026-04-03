@@ -28,7 +28,7 @@ function createSelectedAppContext(
   lifecycle: 'active' | 'complete',
   summaryForModel: string
 ): ChatBridgeSelectedAppContext {
-  return {
+  const selected: ChatBridgeSelectedAppContext = {
     messageId,
     appId: part.appId,
     appName: part.appName,
@@ -42,6 +42,18 @@ function createSelectedAppContext(
       ? { latestScreenshot: getLatestChatBridgeAppScreenshot(part.values) ?? undefined }
       : {}),
   }
+
+  const stateDigest = buildChatBridgeAppStateDigest(part as MessageAppPart)
+  if (stateDigest) {
+    selected.stateDigest = stateDigest
+  }
+
+  const latestScreenshot = getLatestChatBridgeAppScreenshot(part.values)
+  if (latestScreenshot) {
+    selected.latestScreenshot = latestScreenshot
+  }
+
+  return selected
 }
 
 export function getChatBridgeAppSummaryForModel(part: MessageAppPart): string | null {

@@ -38,11 +38,7 @@ function normalizeSummary(summary?: string) {
   return trimmed ? trimmed : null
 }
 
-function describeDrawingKitMark(mark: {
-  kind: 'line' | 'stamp'
-  tool?: string
-  stamp?: string
-}) {
+function describeDrawingKitMark(mark: { kind: 'line' | 'stamp'; tool?: string; stamp?: string }) {
   if (mark.kind === 'stamp') {
     return `${mark.stamp ?? 'sticker'} stamp`
   }

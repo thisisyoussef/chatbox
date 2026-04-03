@@ -35,6 +35,10 @@ Legacy parked packets:
 - [CB-503 - Debate Arena flagship app](./cb-503-debate-arena-flagship-app/feature-spec.md)
 - [CB-504 - Multi-app continuity in a single conversation](./cb-504-multi-app-continuity-in-a-single-conversation/feature-spec.md)
 
+## Post-Pack Follow-Up Stories
+
+- [CB-511 - Drawing Kit live context for chat](./cb-511-drawing-kit-live-context-for-chat/feature-spec.md)
+
 ## Risks
 
 - Letting the active catalog drift away from the checked-in default runtime.

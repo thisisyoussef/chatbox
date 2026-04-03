@@ -104,6 +104,14 @@ function normalizeCaption(value?: string) {
   return trimmed ? trimmed : undefined
 }
 
+function escapeSvgText(value: string) {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
+}
+
+function encodeSvgDataUrl(svg: string) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
 function pickDrawingKitPromptPack(request?: string) {
   const seed = request?.trim() ? request : DRAWING_KIT_APP_ID
   return DRAWING_KIT_PROMPT_PACKS[hashString(seed) % DRAWING_KIT_PROMPT_PACKS.length]
@@ -114,23 +122,6 @@ function clampPoint(value: number) {
     return 0
   }
   return Math.min(1, Math.max(0, value))
-}
-
-function escapeSvgText(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function encodeSvgDataUrl(svg: string) {
-  const encoded =
-    typeof Buffer !== 'undefined'
-      ? Buffer.from(svg, 'utf8').toString('base64')
-      : btoa(unescape(encodeURIComponent(svg)))
-
-  return `data:image/svg+xml;base64,${encoded}`
 }
 
 function sampleLinePoints(points: DrawingKitPreviewPoint[]) {
@@ -175,9 +166,7 @@ function buildDrawingKitStatusText(status: DrawingKitStatus, stickerCount: numbe
   }
 
   if (status === 'checkpointed') {
-    return stickerCount > 0
-      ? `${stickerCount} ${pluralize(stickerCount, 'sticker')} banked`
-      : 'Checkpoint banked'
+    return stickerCount > 0 ? `${stickerCount} ${pluralize(stickerCount, 'sticker')} banked` : 'Checkpoint banked'
   }
 
   if (status === 'drawing') {
@@ -234,20 +223,22 @@ function buildDrawingKitSummary(options: {
   return `Drawing Kit round in progress. Prompt "${options.roundPrompt}". ${captionSegment} ${options.strokeCount} ${pluralize(options.strokeCount, 'stroke')} are visible with ${options.selectedTool}. ${rewardSegment}`
 }
 
-export function createDrawingKitAppSnapshot(options: {
-  request?: string
-  roundLabel?: string
-  roundPrompt?: string
-  rewardLabel?: string
-  selectedTool?: DrawingKitTool
-  status?: DrawingKitStatus
-  caption?: string
-  strokeCount?: number
-  stickerCount?: number
-  checkpointId?: string
-  lastUpdatedAt?: number
-  previewMarks?: DrawingKitPreviewMark[]
-} = {}): DrawingKitAppSnapshot {
+export function createDrawingKitAppSnapshot(
+  options: {
+    request?: string
+    roundLabel?: string
+    roundPrompt?: string
+    rewardLabel?: string
+    selectedTool?: DrawingKitTool
+    status?: DrawingKitStatus
+    caption?: string
+    strokeCount?: number
+    stickerCount?: number
+    checkpointId?: string
+    lastUpdatedAt?: number
+    previewMarks?: DrawingKitPreviewMark[]
+  } = {}
+): DrawingKitAppSnapshot {
   const updatedAt = options.lastUpdatedAt ?? Date.now()
   const promptPack = pickDrawingKitPromptPack(options.request)
   const roundLabel = options.roundLabel ?? promptPack.roundLabel
@@ -304,11 +295,9 @@ export function parseDrawingKitAppSnapshot(snapshot: unknown) {
   return parsed.success ? parsed.data : null
 }
 
-export function createInitialDrawingKitAppSnapshot(options: {
-  request?: string
-  updatedAt?: number
-  snapshot?: unknown
-} = {}) {
+export function createInitialDrawingKitAppSnapshot(
+  options: { request?: string; updatedAt?: number; snapshot?: unknown } = {}
+) {
   const persisted = parseDrawingKitAppSnapshot(options.snapshot)
   if (persisted) {
     return persisted
@@ -438,7 +427,6 @@ export function bankDrawingKitSnapshot(
     lastUpdatedAt: options.lastUpdatedAt,
   })
 }
-
 function renderLineMark(mark: Extract<DrawingKitPreviewMark, { kind: 'line' }>, width: number, height: number) {
   const points = mark.points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${Math.round(point.x * width)} ${Math.round(point.y * height)}`)
@@ -493,7 +481,11 @@ export function createDrawingKitScreenshotDataUrl(snapshot: DrawingKitAppSnapsho
   const canvasWidth = 540
   const canvasHeight = 360
   const marks = snapshot.previewMarks
-    .map((mark) => (mark.kind === 'line' ? renderLineMark(mark, canvasWidth, canvasHeight) : renderStampMark(mark, canvasWidth, canvasHeight)))
+    .map((mark) =>
+      mark.kind === 'line'
+        ? renderLineMark(mark, canvasWidth, canvasHeight)
+        : renderStampMark(mark, canvasWidth, canvasHeight)
+    )
     .join('')
 
   const caption = escapeSvgText(snapshot.caption ?? 'Uncaptioned doodle')

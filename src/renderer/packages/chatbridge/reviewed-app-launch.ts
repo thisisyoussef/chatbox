@@ -1,4 +1,5 @@
 import {
+  appendChatBridgeAppScreenshot,
   CHATBRIDGE_HOST_TOOL_SCHEMA_VERSION,
   CHATBRIDGE_REVIEWED_APP_LAUNCH_SCHEMA_VERSION,
   CHATBRIDGE_REVIEWED_APP_LAUNCH_VALUES_KEY,
@@ -11,6 +12,7 @@ import {
   writeChatBridgeReviewedAppLaunchValues,
   type BridgeAppEvent,
   type BridgeReadyEvent,
+  type ChatBridgeAppScreenshotRef,
   type ChatBridgeHostToolExecutionRecord,
   type ChatBridgeRecoveryContract,
   type ChatBridgeReviewedAppLaunch,
@@ -25,9 +27,15 @@ import {
   getChessSummary,
   type ChessAppSnapshot,
 } from '@shared/chatbridge/apps/chess'
+import {
+  DRAWING_KIT_APP_ID,
+  createDrawingKitScreenshotDataUrl,
+  parseDrawingKitAppSnapshot,
+} from '@shared/chatbridge/apps/drawing-kit'
 import type { Message, MessageAppPart, MessageContentParts, MessageToolCallPart, Session } from '@shared/types'
 import { Chess } from 'chess.js'
 import { z } from 'zod'
+import { createModelDependencies } from '@/adapters'
 import { createChatBridgeAppRecordStore } from './app-records'
 import { buildChessMessageAppPart } from './chess-session-state'
 
@@ -71,6 +79,7 @@ type ReviewedAppLaunchReadyInput = ReviewedAppLaunchSessionInput & {
 
 type ReviewedAppLaunchEventInput = ReviewedAppLaunchSessionInput & {
   event: Exclude<BridgeAppEvent, BridgeReadyEvent>
+  screenshotRef?: ChatBridgeAppScreenshotRef | null
 }
 
 type ReviewedAppLaunchRecoveryInput = ReviewedAppLaunchSessionInput & {
@@ -78,7 +87,9 @@ type ReviewedAppLaunchRecoveryInput = ReviewedAppLaunchSessionInput & {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
 }
 
 function readString(value: unknown) {
@@ -139,7 +150,10 @@ function normalizeReviewedChessFen(fen?: string) {
   return trimmed
 }
 
-function createChessSnapshotFromLaunch(launch: ChatBridgeReviewedAppLaunch): { snapshot?: ChessAppSnapshot; error?: string } {
+function createChessSnapshotFromLaunch(launch: ChatBridgeReviewedAppLaunch): {
+  snapshot?: ChessAppSnapshot
+  error?: string
+} {
   try {
     const normalizedFen = normalizeReviewedChessFen(launch.fen)
     if (normalizedFen) {
@@ -163,7 +177,10 @@ function createChessSnapshotFromLaunch(launch: ChatBridgeReviewedAppLaunch): { s
     }
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : 'The host could not initialize the Chess board from the provided launch input.',
+      error:
+        error instanceof Error
+          ? error.message
+          : 'The host could not initialize the Chess board from the provided launch input.',
     }
   }
 }
@@ -191,8 +208,7 @@ function buildReviewedAppLaunchPart(
     ...(existingPart?.error ? { error: existingPart.error } : {}),
     title: existingPart?.title ?? launch.appName,
     description:
-      existingPart?.description ??
-      `The host is preparing ${launch.appName} through the reviewed bridge runtime.`,
+      existingPart?.description ?? `The host is preparing ${launch.appName} through the reviewed bridge runtime.`,
     statusText: existingPart?.statusText ?? 'Launching',
     fallbackTitle: existingPart?.fallbackTitle ?? `${launch.appName} fallback`,
     fallbackText:
@@ -201,7 +217,11 @@ function buildReviewedAppLaunchPart(
   }
 }
 
-function buildChessLaunchPart(toolCallId: string, launch: ChatBridgeReviewedAppLaunch, existingPart?: MessageAppPart): MessageAppPart {
+function buildChessLaunchPart(
+  toolCallId: string,
+  launch: ChatBridgeReviewedAppLaunch,
+  existingPart?: MessageAppPart
+): MessageAppPart {
   // Once a reviewed launch has been promoted into a real Chess runtime part, keep
   // the host-owned board state instead of reseeding from the original launch payload.
   if (existingPart?.appId === CHESS_APP_ID) {
@@ -443,10 +463,52 @@ function getBridgeSnapshotStatusText(snapshot: unknown) {
   return readString(asRecord(snapshot)?.statusText)
 }
 
-export function applyReviewedAppLaunchBootstrapToSession(
-  session: Session,
-  input: ReviewedAppLaunchBootstrapInput
-) {
+function buildDrawingKitScreenshotSummary(snapshot: ReturnType<typeof parseDrawingKitAppSnapshot>) {
+  if (!snapshot) {
+    return undefined
+  }
+
+  return snapshot.status === 'complete' || snapshot.status === 'checkpointed'
+    ? snapshot.checkpointSummary
+    : snapshot.summary
+}
+
+function shouldCaptureDrawingKitScreenshot(snapshot: NonNullable<ReturnType<typeof parseDrawingKitAppSnapshot>>) {
+  if (snapshot.status === 'blank') {
+    return false
+  }
+
+  return snapshot.strokeCount > 0 || snapshot.stickerCount > 0 || Boolean(snapshot.caption)
+}
+
+async function createReviewedAppStateScreenshotRef(
+  part: MessageAppPart,
+  event: Extract<Exclude<BridgeAppEvent, BridgeReadyEvent>, { kind: 'app.state' }>
+): Promise<ChatBridgeAppScreenshotRef | null> {
+  if (part.appId !== DRAWING_KIT_APP_ID) {
+    return null
+  }
+
+  const snapshot = parseDrawingKitAppSnapshot(event.snapshot)
+  if (!snapshot || !shouldCaptureDrawingKitScreenshot(snapshot)) {
+    return null
+  }
+
+  const dependencies = await createModelDependencies()
+  const storageKey = await dependencies.storage.saveImage('chatbridge-app', createDrawingKitScreenshotDataUrl(snapshot))
+
+  return {
+    kind: 'app-screenshot',
+    appId: part.appId,
+    appInstanceId: part.appInstanceId,
+    storageKey,
+    capturedAt: snapshot.lastUpdatedAt,
+    summary: buildDrawingKitScreenshotSummary(snapshot),
+    source: 'host-rendered',
+  }
+}
+
+export function applyReviewedAppLaunchBootstrapToSession(session: Session, input: ReviewedAppLaunchBootstrapInput) {
   const { launch, store } = ensureLaunchRecordStore(session, input.part, input.bridgeSessionId, input)
   const nextSession = updateSessionMessageAppPart(session, input.messageId, input.part.appInstanceId, (part) => ({
     ...part,
@@ -465,10 +527,7 @@ export function applyReviewedAppLaunchBootstrapToSession(
   }
 }
 
-export function applyReviewedAppLaunchBridgeReadyToSession(
-  session: Session,
-  input: ReviewedAppLaunchReadyInput
-) {
+export function applyReviewedAppLaunchBridgeReadyToSession(session: Session, input: ReviewedAppLaunchReadyInput) {
   const bootstrapped = applyReviewedAppLaunchBootstrapToSession(session, {
     ...input,
     bridgeSessionId: input.event.bridgeSessionId,
@@ -505,10 +564,7 @@ export function applyReviewedAppLaunchBridgeReadyToSession(
   }
 }
 
-export function applyReviewedAppLaunchBridgeEventToSession(
-  session: Session,
-  input: ReviewedAppLaunchEventInput
-) {
+export function applyReviewedAppLaunchBridgeEventToSession(session: Session, input: ReviewedAppLaunchEventInput) {
   const { launch, store } = ensureLaunchRecordStore(session, input.part, input.event.bridgeSessionId, input)
   const result = store.recordBridgeEvent(input.event, input.now?.() ?? Date.now())
   if (!result.accepted) {
@@ -532,6 +588,7 @@ export function applyReviewedAppLaunchBridgeEventToSession(
           summary,
           summaryForModel: summary,
           snapshot: input.event.snapshot,
+          values: input.screenshotRef ? appendChatBridgeAppScreenshot(part.values, input.screenshotRef) : part.values,
           title: launch.appName,
           description: `${launch.appName} is active inside the reviewed bridge runtime and remains part of the thread.`,
           statusText: getBridgeSnapshotStatusText(input.event.snapshot) ?? 'Running',
@@ -574,10 +631,7 @@ export function applyReviewedAppLaunchBridgeEventToSession(
   }
 }
 
-export function applyReviewedAppLaunchRecoveryToSession(
-  session: Session,
-  input: ReviewedAppLaunchRecoveryInput
-) {
+export function applyReviewedAppLaunchRecoveryToSession(session: Session, input: ReviewedAppLaunchRecoveryInput) {
   const bridgeSessionId = input.part.bridgeSessionId ?? input.contract.correlation.bridgeSessionId
   const { launch, store } = ensureLaunchRecordStore(session, input.part, bridgeSessionId, input)
   const currentInstance = store.getInstance(input.part.appInstanceId)
@@ -636,7 +690,9 @@ export function applyReviewedAppLaunchRecoveryToSession(
   }
 }
 
-export async function persistReviewedAppLaunchBootstrap(input: ReviewedAppLaunchBootstrapInput & { sessionId: string }) {
+export async function persistReviewedAppLaunchBootstrap(
+  input: ReviewedAppLaunchBootstrapInput & { sessionId: string }
+) {
   const { updateSessionWithMessages } = await import('@/stores/chatStore')
   return await updateSessionWithMessages(input.sessionId, (session) => {
     if (!session) {
@@ -659,13 +715,26 @@ export async function persistReviewedAppLaunchBridgeReady(input: ReviewedAppLaun
 }
 
 export async function persistReviewedAppLaunchBridgeEvent(input: ReviewedAppLaunchEventInput & { sessionId: string }) {
+  let screenshotRef: ChatBridgeAppScreenshotRef | null = input.screenshotRef ?? null
+
+  if (!screenshotRef && input.event.kind === 'app.state') {
+    try {
+      screenshotRef = await createReviewedAppStateScreenshotRef(input.part, input.event)
+    } catch (error) {
+      console.warn('Failed to persist reviewed app screenshot context:', error)
+    }
+  }
+
   const { updateSessionWithMessages } = await import('@/stores/chatStore')
   return await updateSessionWithMessages(input.sessionId, (session) => {
     if (!session) {
       throw new Error(`Session ${input.sessionId} not found while recording reviewed app bridge event.`)
     }
 
-    return applyReviewedAppLaunchBridgeEventToSession(session, input)
+    return applyReviewedAppLaunchBridgeEventToSession(session, {
+      ...input,
+      screenshotRef,
+    })
   })
 }
 

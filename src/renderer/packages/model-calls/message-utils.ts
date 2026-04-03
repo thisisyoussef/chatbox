@@ -1,6 +1,10 @@
 import type { Message, MessageContentParts } from '@shared/types'
-import { getChatBridgeAppSummaryForModel } from '@shared/chatbridge'
-import { buildChatBridgeAppStateDigest, formatChatBridgeAppStateDigest, getLatestChatBridgeAppScreenshot } from '@shared/chatbridge'
+import {
+  buildChatBridgeAppStateDigest,
+  formatChatBridgeAppStateDigest,
+  getChatBridgeAppSummaryForModel,
+  getLatestChatBridgeAppScreenshot,
+} from '@shared/chatbridge'
 import type { ModelDependencies } from '@shared/types/adapters'
 import type { FilePart, ImagePart, ModelMessage, TextPart } from 'ai'
 import dayjs from 'dayjs'
@@ -171,7 +175,7 @@ export async function convertToModelMessages(
       }
     })
   )
-  
+
   // Filter out null values manually instead of using compact
   return results.filter((result): result is ModelMessage => result !== null)
 }

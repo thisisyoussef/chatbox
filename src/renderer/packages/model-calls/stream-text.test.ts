@@ -1,6 +1,6 @@
 import type { ModelMessage } from 'ai'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatBridgeRouteDecision } from '@shared/chatbridge'
+import { createDrawingKitAppSnapshot, type ChatBridgeRouteDecision } from '@shared/chatbridge'
 import type { CallChatCompletionOptions, ModelInterface } from '@shared/models/types'
 import type { Message, StreamTextResult } from '@shared/types'
 import { createReviewedSingleAppToolSet } from '../chatbridge/single-app-tools'
@@ -316,5 +316,73 @@ describe('streamText tracing metadata', () => {
         }),
       })
     )
+  })
+
+  it('prefers selected active app context over generic app-record prompts when Drawing Kit is live', async () => {
+    const { buildAdditionalConversationInfo } = await import('./stream-text')
+    const snapshot = createDrawingKitAppSnapshot({
+      roundLabel: 'Dare 11',
+      roundPrompt: 'Draw a moon pizza.',
+      selectedTool: 'spray',
+      status: 'checkpointed',
+      caption: 'Moon pizza',
+      strokeCount: 6,
+      stickerCount: 2,
+      checkpointId: 'drawing-kit-4200',
+      lastUpdatedAt: 4_200,
+    })
+
+    const additionalInfo = buildAdditionalConversationInfo(
+      [
+        {
+          id: 'system-1',
+          role: 'system',
+          timestamp: 1,
+          contentParts: [{ type: 'text', text: 'Stay grounded in host-owned app context.' }],
+        },
+        {
+          id: 'assistant-drawing-1',
+          role: 'assistant',
+          timestamp: 2,
+          contentParts: [
+            {
+              type: 'app',
+              appId: 'drawing-kit',
+              appName: 'Drawing Kit',
+              appInstanceId: 'drawing-instance-1',
+              lifecycle: 'active',
+              summaryForModel: snapshot.summary,
+              snapshot,
+              values: {
+                chatbridgeAppMedia: {
+                  screenshots: [
+                    {
+                      kind: 'app-screenshot',
+                      appId: 'drawing-kit',
+                      appInstanceId: 'drawing-instance-1',
+                      storageKey: 'storage://drawing-shot-1',
+                      capturedAt: 4_200,
+                      summary: 'Moon pizza on the sticky-note canvas.',
+                      source: 'host-rendered',
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+      'Tool instructions go here.',
+      {
+        instances: [],
+        events: [],
+      }
+    )
+
+    expect(additionalInfo).toContain('Tool instructions go here.')
+    expect(additionalInfo).toContain('ChatBridge primary app continuity context')
+    expect(additionalInfo).toContain('Prompt: Draw a moon pizza.')
+    expect(additionalInfo).toContain('Screenshot: Moon pizza on the sticky-note canvas.')
+    expect(additionalInfo).not.toContain('ChatBridge recent app context')
   })
 })
