@@ -1,8 +1,8 @@
 import {
-  buildChatBridgeChessReasoningPrompt,
   buildChatBridgeSelectedAppContextPrompt,
-} from '@shared/chatbridge'
+} from '@shared/chatbridge/app-memory'
 import type { ChatBridgeAppRecordSnapshot } from '@shared/chatbridge/app-records'
+import { buildChatBridgeChessReasoningPrompt } from '@shared/chatbridge/reasoning-context'
 import { getModel } from '@shared/models'
 import { ChatboxAIAPIError, OCRError } from '@shared/models/errors'
 import { createLangSmithConversationMetadata } from '@shared/models/tracing'
