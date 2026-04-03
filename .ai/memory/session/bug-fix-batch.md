@@ -37,4 +37,25 @@
   - `src/shared/chatbridge/weather-service.ts`
   - `src/main/chatbridge/weather/index.test.ts`
   - related handoff notes if needed
-- Status: in-progress
+- Status: fixed
+
+## weather-context-followup-routing
+
+- Symptom: Follow-up advice questions like `What should I wear for this kind of weather?` relaunch Weather Dashboard and stuff the phrase into the location field instead of staying in chat and using the active weather context.
+- Expected behavior: Contextual follow-ups should remain normal chat turns unless the user is clearly asking for a new weather lookup or providing a real location clarification.
+- Evidence:
+  - Production user report on 2026-04-03 showed `weather_dashboard_open` relaunching with `location: "this kind of weather"`.
+  - `src/shared/weather-dashboard/intent.ts` treated broad `weather` mentions as new lookup intents and allowed the leading-location parser to extract non-place phrases before `weather`.
+  - `src/shared/chatbridge/apps/weather-dashboard.ts` accepted explicit `location` hints without validating that they looked like an actual place.
+- Regression coverage:
+  - weather host-routing tests for contextual follow-ups with and without a pending clarification
+  - session submit test proving the turn falls through to normal generation after a prior weather launch
+  - weather location-hint sanitizer tests
+  - full repo validation suite
+- Touched files:
+  - `src/shared/weather-dashboard/intent.ts`
+  - `src/shared/chatbridge/apps/weather-dashboard.ts`
+  - `src/renderer/packages/weather-dashboard/host-routing.test.ts`
+  - `src/renderer/stores/session/messages.weather.test.ts`
+  - `src/shared/chatbridge/apps/weather-dashboard.test.ts`
+- Status: fixed

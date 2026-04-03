@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ChatBridgeSuccessCompletionPayloadSchema, type ChatBridgeSuccessCompletionPayload } from '../completion'
+import { isPlausibleWeatherLocation } from '../../weather-dashboard/intent'
 
 export const WEATHER_DASHBOARD_APP_ID = 'weather-dashboard'
 export const WEATHER_DASHBOARD_APP_NAME = 'Weather Dashboard'
@@ -225,7 +226,7 @@ function trimLeadingFiller(value: string) {
 
 export function normalizeWeatherLocationHint(location?: string, request?: string) {
   const explicitLocation = location?.trim()
-  if (explicitLocation) {
+  if (explicitLocation && isPlausibleWeatherLocation(explicitLocation)) {
     return explicitLocation
   }
 
@@ -245,14 +246,14 @@ export function normalizeWeatherLocationHint(location?: string, request?: string
     const match = normalizedRequest.match(pattern)
     const candidate = match?.[1] ? stripTrailingForecastPhrases(match[1]) : ''
     const cleaned = normalizeWhitespace(candidate)
-    if (cleaned) {
+    if (cleaned && isPlausibleWeatherLocation(cleaned)) {
       return capitalizeWords(cleaned)
     }
   }
 
   const simplified = stripTrailingForecastPhrases(trimLeadingFiller(normalizedRequest))
   const fallback = normalizeWhitespace(simplified)
-  return fallback.length >= 2 ? capitalizeWords(fallback) : undefined
+  return fallback.length >= 2 && isPlausibleWeatherLocation(fallback) ? capitalizeWords(fallback) : undefined
 }
 
 export function resolveWeatherUnits(request?: string, units?: WeatherDashboardUnits) {

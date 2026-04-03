@@ -27,8 +27,15 @@ export type WeatherDashboardTurnResult =
       state: WeatherDashboardHostState
     }
 
-const WEATHER_REQUEST_PATTERN =
-  /\b(weather|forecast|temperature|temp|rain|snow|wind|humid(?:ity)?|conditions?|sunny|cloudy|storm|precipitation)\b/i
+const WEATHER_LOOKUP_PATTERNS = [
+  /^(?:what(?:'s| is)|how(?:'s| is)|show me|tell me|give me|check|open|launch|display)\b.*\b(weather|forecast|temperature|temp|conditions?)\b/i,
+  /^(?:weather|forecast|temperature|temp|conditions?)\b/i,
+  /\b(?:weather|forecast|temperature|temp|conditions?)\s+(?:in|for|at|near)\b/i,
+  /\bwill it\s+(?:rain|snow)\b/i,
+  /\bis it\s+(?:raining|snowing|windy|humid|hot|cold)\b/i,
+  /\bhow\s+(?:hot|cold|humid|windy)\b/i,
+  /\b(?:rain|snow|wind|humidity|humid(?:ity)?|temperature|temp)\s+(?:in|for|at|near)\b/i,
+]
 
 const NON_SPECIFIC_LOCATION_PATTERNS = [
   /^here$/i,
@@ -74,6 +81,12 @@ const AMBIGUOUS_LOCATION_NAMES = new Set([
   'victoria',
 ])
 
+const NON_LOCATION_REPLY_PATTERNS = [
+  /\?/,
+  /\b(weather|forecast|temperature|temp|conditions?|rain|snow|wind|humid(?:ity)?|umbrella|jacket|coat|wear|bring|pack)\b/i,
+  /^(?:what|how|why|when|where|who|should|could|would|can|do|does|did|is|are|am|will|tell|show|give|open|launch)\b/i,
+]
+
 function normalizeText(input: string): string {
   return input.replace(/\s+/g, ' ').trim()
 }
@@ -91,8 +104,14 @@ function cleanLocationCandidate(input: string): string {
   return stripTrailingTimeQualifier(stripTrailingPunctuation(withoutLeadIn))
 }
 
-function looksLikeWeatherRequest(input: string): boolean {
-  return WEATHER_REQUEST_PATTERN.test(input)
+function looksLikeWeatherLookupRequest(input: string): boolean {
+  const normalized = normalizeText(stripTrailingPunctuation(input))
+  if (WEATHER_LOOKUP_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return true
+  }
+
+  const locationCandidate = extractLocationFromWeatherRequest(normalized)
+  return Boolean(locationCandidate && isPlausibleWeatherLocation(locationCandidate))
 }
 
 function looksLikeLaunchConfirmation(input: string): boolean {
@@ -127,12 +146,40 @@ function isAmbiguousLocation(input: string): boolean {
   return AMBIGUOUS_LOCATION_NAMES.has(normalized)
 }
 
+export function isPlausibleWeatherLocation(input: string): boolean {
+  const normalized = normalizeText(stripTrailingPunctuation(input))
+  if (!normalized || normalized.length < 2 || normalized.length > 80) {
+    return false
+  }
+
+  if (!/^[\p{L}\p{M}0-9 .,'-]+$/u.test(normalized)) {
+    return false
+  }
+
+  if (normalized.split(/\s+/).length > 5) {
+    return false
+  }
+
+  return !NON_LOCATION_REPLY_PATTERNS.some((pattern) => pattern.test(normalized))
+}
+
 function extractLocationFromWeatherRequest(input: string): string | null {
   const normalized = normalizeText(input)
 
-  const trailingQualifierMatch = normalized.match(/\b(?:in|for|at)\s+(.+)$/i)
-  if (trailingQualifierMatch?.[1]) {
-    return cleanLocationCandidate(trailingQualifierMatch[1])
+  const trailingQualifierPatterns = [
+    /\b(?:weather|forecast|temperature|temp|conditions?)\s+(?:in|for|at|near)\s+(.+)$/i,
+    /\b(?:show me|tell me|give me|check|open|launch)\s+(?:the\s+)?(?:weather|forecast|temperature|temp|conditions?)(?:\s+dashboard)?\s+(?:in|for|at|near)\s+(.+)$/i,
+    /\bwill it\s+(?:rain|snow)\b.*\b(?:in|for|at|near)\s+(.+)$/i,
+    /\bis it\s+(?:raining|snowing|windy|humid|hot|cold)\b.*\b(?:in|for|at|near)\s+(.+)$/i,
+    /\bhow\s+(?:hot|cold|humid|windy)\b.*\b(?:in|for|at|near)\s+(.+)$/i,
+    /\b(?:rain|snow|wind|humidity|humid(?:ity)?|temperature|temp)\s+(?:in|for|at|near)\s+(.+)$/i,
+  ]
+
+  for (const pattern of trailingQualifierPatterns) {
+    const trailingQualifierMatch = normalized.match(pattern)
+    if (trailingQualifierMatch?.[1]) {
+      return cleanLocationCandidate(trailingQualifierMatch[1])
+    }
   }
 
   const leadingLocationMatch = normalized.match(
@@ -147,7 +194,11 @@ function extractLocationFromWeatherRequest(input: string): string | null {
 
 function extractLocationFromReply(input: string): string {
   return cleanLocationCandidate(
-    normalizeText(input).replace(/^(?:it'?s|it is)\s+/i, '').replace(/^(?:for me )/i, '').trim()
+    normalizeText(input)
+      .replace(/^(?:it'?s|it is)\s+/i, '')
+      .replace(/^(?:for me )/i, '')
+      .replace(/^(?:i'?m|i am|we'?re|we are|located|based)\s+(?:in\s+)?/i, '')
+      .trim()
   )
 }
 
@@ -242,8 +293,12 @@ export function resolveWeatherDashboardTurn(messages: Message[], userText: strin
   }
 
   const pendingState = getLatestWeatherDashboardHostState(messages)
-  if (pendingState?.status === 'awaiting-location' && !looksLikeWeatherRequest(normalizedUserText)) {
-    return resolveLocationCandidate(extractLocationFromReply(normalizedUserText), pendingState.originalRequest)
+  if (pendingState?.status === 'awaiting-location' && !looksLikeWeatherLookupRequest(normalizedUserText)) {
+    const locationReply = extractLocationFromReply(normalizedUserText)
+    if (!isPlausibleWeatherLocation(locationReply)) {
+      return { kind: 'none' }
+    }
+    return resolveLocationCandidate(locationReply, pendingState.originalRequest)
   }
 
   if (pendingState?.status === 'route-ready' && looksLikeLaunchConfirmation(normalizedUserText)) {
@@ -254,7 +309,7 @@ export function resolveWeatherDashboardTurn(messages: Message[], userText: strin
     }
   }
 
-  if (!looksLikeWeatherRequest(normalizedUserText)) {
+  if (!looksLikeWeatherLookupRequest(normalizedUserText)) {
     return { kind: 'none' }
   }
 
