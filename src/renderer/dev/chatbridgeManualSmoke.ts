@@ -143,6 +143,14 @@ const manualSmokeTraceDescriptors: Record<
     smokeSupport: 'supported',
     storyId: 'CB-006',
   },
+  'runtime-and-route-receipt': {
+    slug: 'chatbridge-runtime-and-route-receipt',
+    primaryFamily: 'routing',
+    evidenceFamilies: ['persistence'],
+    runtimeTarget: MANUAL_SMOKE_RUNTIME_TARGET,
+    smokeSupport: 'supported',
+    storyId: 'I001-02',
+  },
 }
 
 function getProjectName(payload?: LangSmithStatusPayload) {
@@ -161,6 +169,8 @@ export function getChatBridgeManualSmokeFixtureMode(fixtureId: string): ManualSm
           ? 'Supported desktop smoke fixture covering Chess runtime moves and persistence.'
           : fixtureId === 'chess-mid-game-board-context'
             ? 'Supported desktop smoke fixture covering Chess follow-up reasoning context.'
+            : fixtureId === 'runtime-and-route-receipt'
+              ? 'Supported desktop smoke fixture covering tray gating when a later chat-only route receipt follows a real runtime.'
             : fixtureId === 'drawing-kit-doodle-dare'
               ? 'Supported desktop smoke fixture covering the Drawing Kit doodle game, checkpoint continuity, and follow-up chat.'
             : fixtureId === 'weather-dashboard'

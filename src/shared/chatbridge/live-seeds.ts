@@ -36,6 +36,7 @@ import {
   writeChatBridgeRecoveryContractValues,
 } from './recovery-contract'
 import { writeChatBridgeReviewedAppLaunchValues } from './reviewed-app-launch'
+import { createChatBridgeRouteMessagePart } from './routing'
 import {
   ChatBridgeStoryBuilderStateSchema,
   type ChatBridgeStoryBuilderMode,
@@ -1830,6 +1831,48 @@ export function buildChatBridgeChessRuntimeSessionFixture(): Omit<Session, 'id'>
   }
 }
 
+export function buildChatBridgeRuntimeAndRouteReceiptSessionFixture(): Omit<Session, 'id'> {
+  const routeReceipt = createChatBridgeRouteMessagePart({
+    schemaVersion: 2,
+    hostRuntime: 'desktop-electron',
+    kind: 'refuse',
+    reasonCode: 'no-confident-match',
+    prompt: 'What should I cook for dinner tonight?',
+    summary:
+      'No reviewed app is a confident fit for this request, so the host will keep helping in chat instead of forcing a launch.',
+    matches: [],
+  })
+
+  return {
+    name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Runtime + route receipt`,
+    type: 'chat',
+    threadName: 'Runtime + Route Receipt',
+    messages: [
+      createTextMessage(
+        'msg-runtime-route-system',
+        'system',
+        'Only render docked app chrome when a real host-owned runtime surface exists; keep route receipts inline in chat.',
+        1
+      ),
+      createTextMessage(
+        'msg-runtime-route-user-open',
+        'user',
+        'Open the chess board in the thread and keep it live while I ask other questions.',
+        2
+      ),
+      createChessRuntimeMessage('msg-runtime-route-chess', 3),
+      createTextMessage('msg-runtime-route-user-follow-up', 'user', 'What should I cook for dinner tonight?', 4),
+      {
+        id: 'msg-runtime-route-receipt',
+        role: 'assistant',
+        timestamp: 5,
+        contentParts: [routeReceipt],
+      },
+    ],
+    chatBridgeAppRecords: createSeededChessAppRecords(),
+  }
+}
+
 export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
   const historyAndPreview = buildChatBridgeHistoryAndPreviewSessionFixture()
 
@@ -2013,6 +2056,33 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
         },
       ],
       sessionInput: buildChatBridgeChessRuntimeSessionFixture(),
+    },
+    {
+      id: 'runtime-and-route-receipt',
+      name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Runtime + route receipt`,
+      description:
+        'Seeds a live Chess runtime followed by a later chat-only route receipt so you can verify the docked tray stays tied to the real runtime and the receipt remains inline.',
+      fixtureRole: 'platform-regression',
+      smokeSupport: 'supported',
+      coverage: ['Mixed runtime history', 'Tray eligibility gating', 'Inline route receipts'],
+      auditSteps: [
+        {
+          action: 'Open the seeded session and confirm the Chess runtime is the docked app tray target.',
+          expected:
+            'The tray mounts with the live Chess board because it is the only renderable runtime surface in the thread.',
+        },
+        {
+          action: 'Scroll to the later `Keep this in chat` refusal receipt.',
+          expected:
+            'The receipt stays inline in the normal timeline and does not collapse into anchor chrome or show `Focus app` / `Restore app` controls.',
+        },
+        {
+          action: 'Use the tray `Source` action or jump between the tray and the later receipt.',
+          expected:
+            'The tray continues pointing back to the Chess source message, and the later route receipt never steals the docked runtime slot.',
+        },
+      ],
+      sessionInput: buildChatBridgeRuntimeAndRouteReceiptSessionFixture(),
     },
     {
       id: 'history-and-preview',

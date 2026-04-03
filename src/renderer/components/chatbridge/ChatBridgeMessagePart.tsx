@@ -1,11 +1,11 @@
 import { Button, Text } from '@mantine/core'
 import type { MessageAppPart, MessageContentParts } from '@shared/types'
 import { applyChatBridgeRecoveryAction, getChatBridgeRouteDecision, isChatBridgeChessAppId } from '@shared/chatbridge'
-import { isChatBridgeReviewedAppLaunchPart } from '@/packages/chatbridge/reviewed-app-launch'
 import { cn } from '@/lib/utils'
 import { ChatBridgeShell } from './ChatBridgeShell'
 import { ChatBridgeRouteArtifact } from './ChatBridgeRouteArtifact'
 import { getChatBridgeSurfaceContent } from './apps/surface'
+import { getChatBridgeSurfaceKind, isChatBridgeTrayEligiblePart } from './apps/surface-contract'
 import { getMessageAppPartViewModel } from './chatbridge'
 import { ChessRuntime } from './apps/chess/ChessRuntime'
 
@@ -53,10 +53,11 @@ export function ChatBridgeMessagePart({
   onOpenFloatingShell,
 }: ChatBridgeMessagePartProps) {
   const viewModel = getMessageAppPartViewModel(part)
-  const isReviewedLaunchPart = isChatBridgeReviewedAppLaunchPart(part)
-  const routeDecision = !isReviewedLaunchPart ? getChatBridgeRouteDecision(part) : null
+  const surfaceKind = getChatBridgeSurfaceKind(part)
+  const trayEligible = isChatBridgeTrayEligiblePart(part)
+  const routeDecision = surfaceKind === 'inline-route-artifact' ? getChatBridgeRouteDecision(part) : null
   const runtime =
-    part.lifecycle === 'active' && isChatBridgeChessAppId(part.appId) && !isReviewedLaunchPart ? (
+    surfaceKind === 'chess-runtime' && part.lifecycle === 'active' && isChatBridgeChessAppId(part.appId) ? (
       <ChessRuntime part={part} onUpdatePart={onUpdatePart} sessionId={sessionId} messageId={messageId} />
     ) : undefined
   const inlineSurface =
@@ -99,7 +100,7 @@ export function ChatBridgeMessagePart({
     }
   }
 
-  if (presentation === 'anchor') {
+  if (presentation === 'anchor' && trayEligible) {
     return (
       <div
         data-testid="chatbridge-anchor"
@@ -153,7 +154,7 @@ export function ChatBridgeMessagePart({
       supportPanel={viewModel.supportPanel}
       primaryAction={buildShellAction(primaryAction)}
       secondaryAction={buildShellAction(secondaryAction)}
-      className={presentation === 'tray' ? 'my-0' : undefined}
+      className={presentation === 'tray' && trayEligible ? 'my-0' : undefined}
     >
       {inlineSurface}
     </ChatBridgeShell>

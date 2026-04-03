@@ -1,7 +1,5 @@
-import { getChatBridgeRouteDecision } from '@shared/chatbridge'
 import type { Message, MessageAppPart } from '@shared/types'
-
-const FLOATABLE_LIFECYCLES = new Set(['launching', 'ready', 'active'])
+import { isChatBridgeTrayEligiblePart } from './apps/surface-contract'
 
 export interface ChatBridgeFloatingRuntimeTarget {
   messageId: string
@@ -11,12 +9,7 @@ export interface ChatBridgeFloatingRuntimeTarget {
 }
 
 function isFloatableAppPart(part: MessageAppPart) {
-  return (
-    Boolean(part.appId) &&
-    Boolean(part.appInstanceId) &&
-    FLOATABLE_LIFECYCLES.has(part.lifecycle) &&
-    getChatBridgeRouteDecision(part) === null
-  )
+  return Boolean(part.appId) && Boolean(part.appInstanceId) && isChatBridgeTrayEligiblePart(part)
 }
 
 export function resolveChatBridgeFloatingRuntimeTarget(messages: Message[]): ChatBridgeFloatingRuntimeTarget | null {

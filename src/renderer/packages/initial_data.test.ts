@@ -14,6 +14,7 @@ describe('chatbridge smoke inspection snapshot', () => {
       'drawing-kit-doodle-dare',
       'weather-dashboard',
       'chess-runtime',
+      'runtime-and-route-receipt',
       'history-and-preview',
     ])
     expect(snapshot.presetSessions.map((session) => session.fixtureId)).toEqual([
@@ -24,6 +25,7 @@ describe('chatbridge smoke inspection snapshot', () => {
       'drawing-kit-doodle-dare',
       'weather-dashboard',
       'chess-runtime',
+      'runtime-and-route-receipt',
       'history-and-preview',
     ])
     expect(snapshot.presetSessions.every((session) => session.locales.includes('en'))).toBe(true)
@@ -38,6 +40,10 @@ describe('chatbridge smoke inspection snapshot', () => {
     })
     expect(snapshot.presetSessions.find((session) => session.fixtureId === 'weather-dashboard')).toMatchObject({
       fixtureRole: 'active-flagship',
+      smokeSupport: 'supported',
+    })
+    expect(snapshot.presetSessions.find((session) => session.fixtureId === 'runtime-and-route-receipt')).toMatchObject({
+      fixtureRole: 'platform-regression',
       smokeSupport: 'supported',
     })
     expect(snapshot.presetSessions.find((session) => session.fixtureId === 'history-and-preview')).toMatchObject({

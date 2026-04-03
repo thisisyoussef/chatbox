@@ -455,7 +455,7 @@ describe('ChatBridgeMessagePart Story Builder surface', () => {
     )
 
     expect(screen.getByTestId('chatbridge-shell').getAttribute('data-state')).toBe('complete')
-    expect(screen.getByText('Completion handoff')).toBeTruthy()
+    expect(screen.getByText('Draft handoff')).toBeTruthy()
     expect(screen.getByText('Draft returned to chat')).toBeTruthy()
     expect(screen.getByText(/continue with chapter five/i)).toBeTruthy()
   })
