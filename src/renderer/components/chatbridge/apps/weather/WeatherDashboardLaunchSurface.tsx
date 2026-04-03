@@ -14,6 +14,7 @@ import {
   type ChatBridgeReviewedAppLaunch,
   type WeatherDashboardSnapshot,
 } from '@shared/chatbridge'
+import { WEATHER_DASHBOARD_WEB_BRIDGE_ENDPOINTS } from '@shared/chatbridge/weather-dashboard-bridge'
 import type { LangSmithRunHandle } from '@shared/utils/langsmith_adapter'
 import type { MessageAppPart } from '@shared/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -55,6 +56,46 @@ function createFallbackSnapshot(launch: ChatBridgeReviewedAppLaunch, updatedAt =
       usingStaleSnapshot: false,
     },
   })
+}
+
+function hasElectronWeatherBridge() {
+  return typeof window !== 'undefined' && typeof window.electronAPI?.invoke === 'function'
+}
+
+function hasWebWeatherBridge() {
+  if (typeof window === 'undefined' || hasElectronWeatherBridge() || typeof fetch !== 'function') {
+    return false
+  }
+
+  const protocol = window.location?.protocol ?? ''
+  return protocol === 'http:' || protocol === 'https:'
+}
+
+async function callWebWeatherBridge(payload: {
+  request: string | undefined
+  location: string | undefined
+  units: WeatherDashboardSnapshot['units']
+  refresh: boolean
+  traceParentRunId: string | undefined
+}) {
+  try {
+    const response = await fetch(WEATHER_DASHBOARD_WEB_BRIDGE_ENDPOINTS.dashboard, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      return null
+    }
+
+    return (await response.json()) as ChatBridgeWeatherDashboardResult
+  } catch (error) {
+    console.debug('Weather web bridge is unavailable.', error)
+    return null
+  }
 }
 
 export function WeatherDashboardLaunchSurface({
@@ -248,7 +289,27 @@ export function WeatherDashboardLaunchSurface({
     const requestId = ++latestRequestIdRef.current
 
     const requestPromise = (async () => {
-      if (typeof window === 'undefined' || typeof window.electronAPI?.invoke !== 'function') {
+      let result: ChatBridgeWeatherDashboardResult | null = null
+
+      if (hasElectronWeatherBridge()) {
+        result = (await window.electronAPI.invoke('chatbridge-weather:get-dashboard', {
+          request,
+          location,
+          units,
+          refresh: options.refresh,
+          traceParentRunId: launchRunRef.current?.runId,
+        })) as ChatBridgeWeatherDashboardResult
+      } else if (hasWebWeatherBridge()) {
+        result = await callWebWeatherBridge({
+          request,
+          location,
+          units,
+          refresh: options.refresh,
+          traceParentRunId: launchRunRef.current?.runId,
+        })
+      }
+
+      if (!result) {
         const fallbackSnapshot = reconcileWeatherDashboardSnapshot(createFallbackSnapshot(launch), {
           referenceTime: Date.now(),
           fallbackSnapshot: lastSnapshotRef.current,
@@ -263,14 +324,6 @@ export function WeatherDashboardLaunchSurface({
         }
         return fallbackSnapshot
       }
-
-      const result = (await window.electronAPI.invoke('chatbridge-weather:get-dashboard', {
-        request,
-        location,
-        units,
-        refresh: options.refresh,
-        traceParentRunId: launchRunRef.current?.runId,
-      })) as ChatBridgeWeatherDashboardResult
 
       const parsed = ChatBridgeWeatherDashboardResultSchema.parse(result)
       if (requestId !== latestRequestIdRef.current) {

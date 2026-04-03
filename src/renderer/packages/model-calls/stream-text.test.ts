@@ -166,6 +166,7 @@ function createRouteDecision(
 
 describe('streamText tracing metadata', () => {
   beforeEach(() => {
+    vi.resetModules()
     vi.clearAllMocks()
   })
 
