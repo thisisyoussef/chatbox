@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ChatBridgeSuccessCompletionPayloadSchema, type ChatBridgeSuccessCompletionPayload } from '../completion'
 
 export const WEATHER_DASHBOARD_APP_ID = 'weather-dashboard'
 export const WEATHER_DASHBOARD_APP_NAME = 'Weather Dashboard'
@@ -387,6 +388,24 @@ function buildReadyDataStateLabel(cacheStatus: WeatherDashboardCacheStatus) {
   return 'Fresh host snapshot'
 }
 
+function normalizeWeatherReadyCacheStatus(
+  cacheStatus: WeatherDashboardCacheStatus | undefined
+): Extract<WeatherDashboardCacheStatus, 'miss' | 'hit' | 'refreshed'> {
+  if (cacheStatus === 'hit' || cacheStatus === 'refreshed') {
+    return cacheStatus
+  }
+
+  return 'miss'
+}
+
+function getWeatherSnapshotHeadline(snapshot: Pick<WeatherDashboardSnapshot, 'current' | 'headline' | 'units'>) {
+  if (snapshot.current) {
+    return `${formatWeatherTemperature(snapshot.current.temperature, snapshot.units)} and ${snapshot.current.conditionLabel}`
+  }
+
+  return normalizeWhitespace(snapshot.headline)
+}
+
 type CreateWeatherDashboardReadySnapshotInput = {
   request?: string
   locationQuery?: string
@@ -647,5 +666,128 @@ export function createWeatherDashboardDegradedSnapshot(
     alerts,
     forecast,
     degraded: input.degraded,
+  })
+}
+
+function normalizeWeatherDashboardSnapshotForReferenceTime(
+  snapshot: WeatherDashboardSnapshot,
+  referenceTime: number
+): WeatherDashboardSnapshot {
+  if (snapshot.status === 'ready' && snapshot.current) {
+    return createWeatherDashboardReadySnapshot({
+      request: snapshot.request,
+      locationQuery: snapshot.locationQuery,
+      locationName: snapshot.locationName,
+      timezone: snapshot.timezone,
+      units: snapshot.units,
+      current: snapshot.current,
+      hourly: snapshot.hourly,
+      daily: snapshot.daily,
+      alerts: snapshot.alerts,
+      forecast: snapshot.forecast,
+      fetchedAt: snapshot.fetchedAt,
+      staleAt: snapshot.staleAt,
+      updatedAt: snapshot.updatedAt,
+      cacheStatus: normalizeWeatherReadyCacheStatus(snapshot.cacheStatus),
+      referenceTime,
+    })
+  }
+
+  if (snapshot.status === 'degraded' && snapshot.degraded) {
+    return createWeatherDashboardDegradedSnapshot({
+      request: snapshot.request,
+      locationQuery: snapshot.locationQuery,
+      locationName: snapshot.locationName,
+      timezone: snapshot.timezone,
+      units: snapshot.units,
+      degraded: snapshot.degraded,
+      hourly: snapshot.hourly,
+      daily: snapshot.daily,
+      alerts: snapshot.alerts,
+      fetchedAt: snapshot.fetchedAt,
+      staleAt: snapshot.staleAt,
+      updatedAt: snapshot.updatedAt,
+      current: snapshot.current,
+      forecast: snapshot.forecast,
+      referenceTime,
+    })
+  }
+
+  return snapshot
+}
+
+function hasMatchingWeatherLocation(snapshot: WeatherDashboardSnapshot, fallbackSnapshot: WeatherDashboardSnapshot) {
+  const snapshotLocation = normalizeWhitespace(snapshot.locationQuery ?? snapshot.locationName).toLowerCase()
+  const fallbackLocation = normalizeWhitespace(fallbackSnapshot.locationQuery ?? fallbackSnapshot.locationName).toLowerCase()
+  return Boolean(snapshotLocation) && snapshotLocation === fallbackLocation
+}
+
+export function reconcileWeatherDashboardSnapshot(
+  snapshot: WeatherDashboardSnapshot,
+  options: {
+    referenceTime?: number
+    fallbackSnapshot?: WeatherDashboardSnapshot | null
+  } = {}
+): WeatherDashboardSnapshot {
+  const referenceTime = options.referenceTime ?? Date.now()
+  const normalizedSnapshot = normalizeWeatherDashboardSnapshotForReferenceTime(snapshot, referenceTime)
+  const fallbackSnapshot = options.fallbackSnapshot
+    ? normalizeWeatherDashboardSnapshotForReferenceTime(options.fallbackSnapshot, referenceTime)
+    : null
+
+  if (
+    normalizedSnapshot.status !== 'degraded' ||
+    !normalizedSnapshot.degraded ||
+    normalizedSnapshot.degraded.usingStaleSnapshot ||
+    !fallbackSnapshot?.current ||
+    !hasMatchingWeatherLocation(normalizedSnapshot, fallbackSnapshot)
+  ) {
+    return normalizedSnapshot
+  }
+
+  return createWeatherDashboardDegradedSnapshot({
+    request: normalizedSnapshot.request ?? fallbackSnapshot.request,
+    locationQuery: fallbackSnapshot.locationQuery ?? normalizedSnapshot.locationQuery,
+    locationName: fallbackSnapshot.locationName,
+    timezone: fallbackSnapshot.timezone ?? normalizedSnapshot.timezone,
+    units: fallbackSnapshot.units,
+    degraded: {
+      ...normalizedSnapshot.degraded,
+      usingStaleSnapshot: true,
+    },
+    current: fallbackSnapshot.current,
+    hourly: fallbackSnapshot.hourly,
+    daily: fallbackSnapshot.daily,
+    alerts: fallbackSnapshot.alerts,
+    forecast: fallbackSnapshot.forecast,
+    fetchedAt: fallbackSnapshot.fetchedAt,
+    staleAt: fallbackSnapshot.staleAt,
+    updatedAt: fallbackSnapshot.updatedAt,
+    referenceTime,
+  })
+}
+
+export function createWeatherDashboardCloseCompletion(
+  snapshot: WeatherDashboardSnapshot
+): ChatBridgeSuccessCompletionPayload {
+  const headline = getWeatherSnapshotHeadline(snapshot) || snapshot.statusText
+  const summaryText = normalizeWhitespace(
+    `Weather Dashboard closed for ${snapshot.locationName}. Last visible host weather was ${headline}. Host state at close: ${snapshot.dataStateLabel}. ${snapshot.lastUpdatedLabel}. later chat should treat this as the last validated host snapshot until the dashboard is reopened or refreshed.`
+  )
+
+  return ChatBridgeSuccessCompletionPayloadSchema.parse({
+    schemaVersion: 1,
+    status: 'success',
+    outcomeData: {
+      locationName: snapshot.locationName,
+      snapshotStatus: snapshot.status,
+      cacheStatus: snapshot.cacheStatus,
+      ...(snapshot.locationQuery ? { locationQuery: snapshot.locationQuery } : {}),
+      statusText: snapshot.statusText,
+    },
+    suggestedSummary: {
+      title: 'Weather Dashboard handoff',
+      text: summaryText,
+    },
   })
 }

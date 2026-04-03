@@ -1,0 +1,14 @@
+{
+  "storyId": "WD-105",
+  "stage": "agent1",
+  "mode": "manual-single-agent",
+  "scope": "Weather Dashboard stale reopen hardening, close completion handoff, and structured observability",
+  "testsAuthoredOrExpanded": [
+    "src/shared/chatbridge/apps/weather-dashboard.test.ts",
+    "src/renderer/components/chatbridge/apps/weather/WeatherDashboardPanel.test.tsx",
+    "src/renderer/components/chatbridge/apps/ReviewedAppLaunchSurface.test.tsx",
+    "test/integration/chatbridge/scenarios/weather-dashboard-flagship.test.ts"
+  ],
+  "redCommand": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/shared/chatbridge/apps/weather-dashboard.test.ts src/renderer/components/chatbridge/apps/weather/WeatherDashboardPanel.test.tsx src/renderer/components/chatbridge/apps/ReviewedAppLaunchSurface.test.tsx test/integration/chatbridge/scenarios/weather-dashboard-flagship.test.ts",
+  "redResult": "failed before implementation; shared snapshot helpers were missing, the weather panel had no close action, and stale reopen degraded paths dropped back to a cold host response instead of preserving the last trusted snapshot"
+}

@@ -7,6 +7,13 @@ cd "$ROOT_DIR"
 VERCEL_TOKEN="${VERCEL_TOKEN:?VERCEL_TOKEN is required}"
 PROJECT_JSON="${PROJECT_JSON:-.vercel/project.json}"
 LOG_FILE="${LOG_FILE:-${TMPDIR:-/tmp}/chatbox-vercel-deploy.log}"
+VERCEL_STDERR_FILE="$(mktemp "${TMPDIR:-/tmp}/chatbox-vercel-stderr.XXXXXX")"
+
+cleanup() {
+  rm -f "$VERCEL_STDERR_FILE"
+}
+
+trap cleanup EXIT
 
 if [ ! -f "$PROJECT_JSON" ]; then
   echo "Missing Vercel project link file: $PROJECT_JSON" >&2
@@ -38,9 +45,18 @@ fi
 
 : >"$LOG_FILE"
 
+set +e
 DEPLOYMENT_OUTPUT="$(
-  vercel "${DEPLOY_ARGS[@]}" 2> >(tee "$LOG_FILE" >&2)
+  vercel "${DEPLOY_ARGS[@]}" 2>"$VERCEL_STDERR_FILE"
 )"
+VERCEL_EXIT_CODE=$?
+set -e
+
+tee "$LOG_FILE" >&2 < "$VERCEL_STDERR_FILE"
+
+if [ "$VERCEL_EXIT_CODE" -ne 0 ]; then
+  exit "$VERCEL_EXIT_CODE"
+fi
 
 DEPLOYMENT_URL="$(
   printf '%s\n' "$DEPLOYMENT_OUTPUT" | awk 'NF { url=$0 } END { print url }'

@@ -1,0 +1,18 @@
+{
+  "storyId": "WD-105",
+  "stage": "agent3",
+  "mode": "manual-single-agent",
+  "status": "passed",
+  "reviewNotes": [
+    "kept WD-105 scoped to ship-hardening concerns rather than reopening provider normalization or panel layout scope",
+    "updated live seed audit text to include the close handoff without introducing a new seeded weather payload shape"
+  ],
+  "additionalVerification": [
+    "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/renderer/packages/chatbridge/reviewed-app-launch.test.ts src/shared/chatbridge/live-seeds.test.ts",
+    "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm test",
+    "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm check",
+    "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm lint",
+    "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm build",
+    "git diff --check"
+  ]
+}

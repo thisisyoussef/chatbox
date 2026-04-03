@@ -551,6 +551,10 @@ export function applyReviewedAppLaunchBridgeEventToSession(
           title: launch.appName,
           description: `${launch.appName} completed inside the reviewed bridge runtime and stayed in the thread.`,
           statusText: 'Complete',
+          values: {
+            ...(part.values ?? {}),
+            chatbridgeCompletion: input.event.completion,
+          },
         }
       }
 

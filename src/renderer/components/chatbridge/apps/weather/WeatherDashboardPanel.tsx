@@ -9,10 +9,12 @@ import {
 interface WeatherDashboardPanelProps {
   snapshot: WeatherDashboardSnapshot
   refreshing: boolean
+  closing: boolean
   changingLocation: boolean
   locationDraft: string
   onLocationDraftChange: (value: string) => void
   onLocationSubmit: () => void
+  onClose: () => void
   onRefresh: () => void
 }
 
@@ -77,10 +79,12 @@ const DETAIL_CARD_CLASSES =
 export function WeatherDashboardPanel({
   snapshot,
   refreshing,
+  closing,
   changingLocation,
   locationDraft,
   onLocationDraftChange,
   onLocationSubmit,
+  onClose,
   onRefresh,
 }: WeatherDashboardPanelProps) {
   const hasCurrentData = Boolean(snapshot.current)
@@ -89,7 +93,7 @@ export function WeatherDashboardPanel({
   const hasHourlyData = hourlyItems.length > 0
   const hasDailyData = dailyItems.length > 0
   const hasAlerts = snapshot.alerts.length > 0
-  const controlsDisabled = refreshing || changingLocation
+  const controlsDisabled = refreshing || changingLocation || closing
   const requestedLocationLabel =
     snapshot.locationQuery && snapshot.locationQuery !== snapshot.locationName
       ? `Requested as ${snapshot.locationQuery}`
@@ -125,10 +129,13 @@ export function WeatherDashboardPanel({
                 variant={snapshot.status === 'degraded' || snapshot.status === 'unavailable' ? 'filled' : 'light'}
                 size="compact-sm"
                 loading={refreshing}
-                disabled={changingLocation}
+                disabled={changingLocation || closing}
                 onClick={onRefresh}
               >
                 Refresh weather
+              </Button>
+              <Button variant="default" size="compact-sm" loading={closing} disabled={controlsDisabled} onClick={onClose}>
+                Close dashboard
               </Button>
             </div>
           </div>

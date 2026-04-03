@@ -1,0 +1,20 @@
+{
+  "storyId": "WD-105",
+  "stage": "agent2",
+  "mode": "manual-single-agent",
+  "implementationFiles": [
+    "src/shared/chatbridge/apps/weather-dashboard.ts",
+    "src/renderer/components/chatbridge/apps/weather/WeatherDashboardLaunchSurface.tsx",
+    "src/renderer/components/chatbridge/apps/weather/WeatherDashboardPanel.tsx",
+    "src/renderer/packages/chatbridge/reviewed-app-launch.ts",
+    "src/shared/chatbridge/live-seeds.ts"
+  ],
+  "notableFixes": [
+    "added shared helpers to reconcile persisted snapshots on reopen and to emit a host-owned close completion payload",
+    "kept stale persisted weather visible when a reopen refresh degrades and the host cache is cold",
+    "added an explicit close control that records app.complete and preserves the last validated weather snapshot for later chat turns",
+    "recorded weather-specific app-event observability for stale fallback and close completion acceptance"
+  ],
+  "greenCommand": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/shared/chatbridge/apps/weather-dashboard.test.ts src/renderer/components/chatbridge/apps/weather/WeatherDashboardPanel.test.tsx src/renderer/components/chatbridge/apps/ReviewedAppLaunchSurface.test.tsx test/integration/chatbridge/scenarios/weather-dashboard-flagship.test.ts",
+  "greenResult": "passed"
+}
