@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createWeatherDashboardCloseCompletion,
   createWeatherDashboardDegradedSnapshot,
   createWeatherDashboardReadySnapshot,
   isWeatherDashboardSnapshotStale,
   normalizeWeatherLocationHint,
+  reconcileWeatherDashboardSnapshot,
   resolveWeatherUnits,
 } from './weather-dashboard'
 
@@ -116,6 +118,77 @@ describe('weather dashboard snapshot helpers', () => {
     expect(snapshot.summary).toContain('last good snapshot')
     expect(snapshot.summary).toContain('upstream data is unavailable')
     expect(snapshot.lastUpdatedLabel).toContain('freshness window passed')
+  })
+
+  it('reconciles a persisted ready snapshot into explicit stale reopen messaging', () => {
+    const snapshot = createWeatherDashboardReadySnapshot({
+      request: 'Open Weather Dashboard for Chicago and show the forecast.',
+      locationQuery: 'Chicago',
+      locationName: 'Chicago, Illinois, United States',
+      timezone: 'America/Chicago',
+      units: 'imperial',
+      fetchedAt: 1_717_000_000_000,
+      staleAt: 1_717_000_600_000,
+      referenceTime: 1_717_000_300_000,
+      cacheStatus: 'miss',
+      current: {
+        temperature: 71.8,
+        apparentTemperature: 70.2,
+        weatherCode: 1,
+        conditionLabel: 'Mostly clear',
+        windSpeed: 8.4,
+      },
+    })
+
+    const reconciled = reconcileWeatherDashboardSnapshot(snapshot, {
+      referenceTime: 1_717_000_900_000,
+    })
+
+    expect(reconciled).toMatchObject({
+      status: 'ready',
+      statusText: 'Weather may be stale',
+      dataStateLabel: 'Host snapshot stale',
+    })
+    expect(reconciled.summary).toContain('older than the host freshness window')
+    expect(reconciled.lastUpdatedLabel).toContain('freshness window passed')
+  })
+
+  it('creates an explicit close completion summary for later turns', () => {
+    const snapshot = createWeatherDashboardReadySnapshot({
+      request: 'Open Weather Dashboard for Chicago and show the forecast.',
+      locationQuery: 'Chicago',
+      locationName: 'Chicago, Illinois, United States',
+      timezone: 'America/Chicago',
+      units: 'imperial',
+      fetchedAt: 1_717_000_000_000,
+      staleAt: 1_717_000_600_000,
+      referenceTime: 1_717_000_300_000,
+      cacheStatus: 'miss',
+      current: {
+        temperature: 72,
+        apparentTemperature: 70,
+        weatherCode: 1,
+        conditionLabel: 'Mostly clear',
+        windSpeed: 9,
+      },
+    })
+
+    const completion = createWeatherDashboardCloseCompletion(snapshot)
+
+    expect(completion).toMatchObject({
+      schemaVersion: 1,
+      status: 'success',
+      outcomeData: {
+        locationName: 'Chicago, Illinois, United States',
+        snapshotStatus: 'ready',
+        cacheStatus: 'miss',
+      },
+      suggestedSummary: {
+        text: expect.stringContaining('Weather Dashboard closed for Chicago, Illinois, United States.'),
+      },
+    })
+    expect(completion.suggestedSummary?.text).toContain('72°F and Mostly clear')
+    expect(completion.suggestedSummary?.text).toContain('later chat should treat this as the last validated host snapshot')
   })
 
   it('detects when a snapshot is past its freshness window', () => {

@@ -2,9 +2,13 @@ import { CHATBRIDGE_LANGSMITH_PROJECT_NAME } from '@shared/models/tracing'
 import {
   ChatBridgeWeatherDashboardResultSchema,
   WeatherDashboardSnapshotSchema,
+  WEATHER_DASHBOARD_APP_NAME,
+  createWeatherDashboardCloseCompletion,
   createWeatherDashboardDegradedSnapshot,
   createWeatherDashboardLoadingSnapshot,
   normalizeWeatherLocationHint,
+  recordChatBridgeObservabilityEvent,
+  reconcileWeatherDashboardSnapshot,
   resolveWeatherUnits,
   type ChatBridgeWeatherDashboardResult,
   type ChatBridgeReviewedAppLaunch,
@@ -62,7 +66,9 @@ export function WeatherDashboardLaunchSurface({
   const initialSnapshot = useMemo(() => {
     const fromPart = parsePartSnapshot(part.snapshot)
     if (fromPart) {
-      return fromPart
+      return reconcileWeatherDashboardSnapshot(fromPart, {
+        referenceTime: Date.now(),
+      })
     }
 
     return createWeatherDashboardLoadingSnapshot({
@@ -77,6 +83,7 @@ export function WeatherDashboardLaunchSurface({
     initialSnapshot.locationQuery ?? normalizeWeatherLocationHint(launch.location, launch.request) ?? ''
   )
   const [busyAction, setBusyAction] = useState<'refresh' | 'location' | null>(null)
+  const [closing, setClosing] = useState(false)
   const launchRunRef = useRef<LangSmithRunHandle | null>(null)
   const lastSnapshotRef = useRef<WeatherDashboardSnapshot>(initialSnapshot)
   const bridgeSessionIdRef = useRef(part.bridgeSessionId ?? `weather-dashboard:${part.appInstanceId}:${crypto.randomUUID()}`)
@@ -136,24 +143,68 @@ export function WeatherDashboardLaunchSurface({
     })
   }
 
-  async function persistSnapshot(nextSnapshot: WeatherDashboardSnapshot, reason: 'initial' | 'refresh' | 'fallback') {
-    if (!sessionId || !messageId) {
-      return
+  function recordAcceptedWeatherEvent(
+    eventKind: 'app.state' | 'app.complete',
+    options: {
+      snapshot?: WeatherDashboardSnapshot
+      fallbackSource?: 'renderer-persisted-snapshot'
+    } = {}
+  ) {
+    const status =
+      eventKind === 'app.complete'
+        ? 'healthy'
+        : options.snapshot?.status === 'degraded' || options.snapshot?.status === 'unavailable'
+          ? 'degraded'
+          : 'healthy'
+
+    recordChatBridgeObservabilityEvent({
+      eventId: crypto.randomUUID(),
+      occurredAt: Date.now(),
+      kind: 'app-event-accepted',
+      severity: status === 'degraded' ? 'warn' : 'info',
+      status,
+      appId: part.appId,
+      appName: part.appName ?? WEATHER_DASHBOARD_APP_NAME,
+      version: launch.appVersion,
+      appInstanceId: part.appInstanceId,
+      bridgeSessionId: bridgeSessionIdRef.current,
+      summary: `${part.appName ?? WEATHER_DASHBOARD_APP_NAME} sent ${eventKind} and the host accepted it.`,
+      details: [
+        `eventKind: ${eventKind}`,
+        ...(options.snapshot ? [`cacheStatus: ${options.snapshot.cacheStatus}`] : []),
+        ...(options.fallbackSource ? [`fallbackSource: ${options.fallbackSource}`] : []),
+        ...(eventKind === 'app.complete' ? ['completion accepted'] : []),
+      ],
+    })
+  }
+
+  async function persistSnapshot(
+    nextSnapshot: WeatherDashboardSnapshot,
+    reason: 'initial' | 'refresh' | 'fallback',
+    options: {
+      fallbackSource?: 'renderer-persisted-snapshot'
+    } = {}
+  ) {
+    if (sessionId && messageId) {
+      await persistReviewedAppLaunchBridgeEvent({
+        sessionId,
+        messageId,
+        part,
+        event: {
+          kind: 'app.state',
+          bridgeSessionId: bridgeSessionIdRef.current,
+          appInstanceId: part.appInstanceId,
+          bridgeToken: bridgeSessionIdRef.current,
+          sequence: nextSequenceRef.current++,
+          idempotencyKey: `${reason}-${nextSnapshot.updatedAt}-${nextSnapshot.cacheStatus}`,
+          snapshot: nextSnapshot,
+        },
+      })
     }
 
-    await persistReviewedAppLaunchBridgeEvent({
-      sessionId,
-      messageId,
-      part,
-      event: {
-        kind: 'app.state',
-        bridgeSessionId: bridgeSessionIdRef.current,
-        appInstanceId: part.appInstanceId,
-        bridgeToken: bridgeSessionIdRef.current,
-        sequence: nextSequenceRef.current++,
-        idempotencyKey: `${reason}-${nextSnapshot.updatedAt}-${nextSnapshot.cacheStatus}`,
-        snapshot: nextSnapshot,
-      },
+    recordAcceptedWeatherEvent('app.state', {
+      snapshot: nextSnapshot,
+      fallbackSource: options.fallbackSource,
     })
   }
 
@@ -198,12 +249,17 @@ export function WeatherDashboardLaunchSurface({
 
     const requestPromise = (async () => {
       if (typeof window === 'undefined' || typeof window.electronAPI?.invoke !== 'function') {
-        const fallbackSnapshot = createFallbackSnapshot(launch)
+        const fallbackSnapshot = reconcileWeatherDashboardSnapshot(createFallbackSnapshot(launch), {
+          referenceTime: Date.now(),
+          fallbackSnapshot: lastSnapshotRef.current,
+        })
+        const fallbackSource =
+          fallbackSnapshot.cacheStatus === 'stale-fallback' ? ('renderer-persisted-snapshot' as const) : undefined
         if (requestId === latestRequestIdRef.current) {
           setSnapshot(fallbackSnapshot)
           lastSnapshotRef.current = fallbackSnapshot
           setLocationDraft(fallbackSnapshot.locationQuery ?? location ?? '')
-          await persistSnapshot(fallbackSnapshot, 'fallback')
+          await persistSnapshot(fallbackSnapshot, 'fallback', { fallbackSource })
         }
         return fallbackSnapshot
       }
@@ -221,11 +277,22 @@ export function WeatherDashboardLaunchSurface({
         return parsed.snapshot
       }
 
-      setSnapshot(parsed.snapshot)
-      lastSnapshotRef.current = parsed.snapshot
-      setLocationDraft(parsed.snapshot.locationQuery ?? location ?? '')
-      await persistSnapshot(parsed.snapshot, options.refresh ? 'refresh' : 'initial')
-      return parsed.snapshot
+      const nextSnapshot = reconcileWeatherDashboardSnapshot(parsed.snapshot, {
+        referenceTime: Date.now(),
+        fallbackSnapshot: lastSnapshotRef.current,
+      })
+      const fallbackSource =
+        parsed.snapshot.status === 'degraded' &&
+        !parsed.snapshot.degraded?.usingStaleSnapshot &&
+        nextSnapshot.cacheStatus === 'stale-fallback'
+          ? ('renderer-persisted-snapshot' as const)
+          : undefined
+
+      setSnapshot(nextSnapshot)
+      lastSnapshotRef.current = nextSnapshot
+      setLocationDraft(nextSnapshot.locationQuery ?? location ?? '')
+      await persistSnapshot(nextSnapshot, options.refresh ? 'refresh' : 'initial', { fallbackSource })
+      return nextSnapshot
     })().finally(() => {
       if (activeRequestRef.current?.promise === requestPromise) {
         activeRequestRef.current = null
@@ -327,14 +394,55 @@ export function WeatherDashboardLaunchSurface({
     }
   }
 
+  const handleClose = async () => {
+    if (busyAction || closing) {
+      return
+    }
+
+    setClosing(true)
+    try {
+      const completion = createWeatherDashboardCloseCompletion(lastSnapshotRef.current)
+
+      if (sessionId && messageId) {
+        await persistReviewedAppLaunchBridgeEvent({
+          sessionId,
+          messageId,
+          part,
+          event: {
+            kind: 'app.complete',
+            bridgeSessionId: bridgeSessionIdRef.current,
+            appInstanceId: part.appInstanceId,
+            bridgeToken: bridgeSessionIdRef.current,
+            sequence: nextSequenceRef.current++,
+            idempotencyKey: `complete-${lastSnapshotRef.current.updatedAt}-${Date.now()}`,
+            completion,
+          },
+        })
+      }
+
+      recordAcceptedWeatherEvent('app.complete')
+      await endLaunchRun({
+        outputs: {
+          status: 'complete',
+          cacheStatus: lastSnapshotRef.current.cacheStatus,
+          locationName: lastSnapshotRef.current.locationName,
+        },
+      })
+    } finally {
+      setClosing(false)
+    }
+  }
+
   return (
     <WeatherDashboardPanel
       snapshot={snapshot}
       refreshing={busyAction === 'refresh'}
+      closing={closing}
       changingLocation={busyAction === 'location'}
       locationDraft={locationDraft}
       onLocationDraftChange={setLocationDraft}
       onLocationSubmit={() => void handleLocationSubmit()}
+      onClose={() => void handleClose()}
       onRefresh={() => void handleRefresh()}
     />
   )

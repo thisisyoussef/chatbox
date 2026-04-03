@@ -3,6 +3,7 @@ import '../setup'
 import { buildContextForAI } from '@/packages/context-management/context-builder'
 import { CHATBRIDGE_APP_CONTEXT_MESSAGE_PREFIX } from '@/packages/chatbridge/context'
 import {
+  createWeatherDashboardCloseCompletion,
   createWeatherDashboardDegradedSnapshot,
   createWeatherDashboardReadySnapshot,
 } from '@shared/chatbridge'
@@ -470,5 +471,115 @@ describe('ChatBridge Weather Dashboard flagship lifecycle', () => {
           cacheStatus: 'refreshed',
         },
       })
+    }))
+
+  it('persists a close summary for later follow-up chat after the dashboard closes', () =>
+    traceScenario('persists a close summary for later follow-up chat after the dashboard closes', () => {
+      const { session, launchPart } = createSessionWithLaunchPart()
+
+      const bootstrapped = applyReviewedAppLaunchBootstrapToSession(session, {
+        messageId: 'assistant-reviewed-weather-scenario-1',
+        part: launchPart,
+        bridgeSessionId: 'bridge-session-reviewed-weather-scenario-4',
+        now: () => 40_000,
+        createId: () => 'event-reviewed-weather-created-4',
+      })
+
+      const readied = applyReviewedAppLaunchBridgeReadyToSession(bootstrapped, {
+        messageId: 'assistant-reviewed-weather-scenario-1',
+        part: getLaunchPart(bootstrapped),
+        event: {
+          kind: 'app.ready',
+          bridgeSessionId: 'bridge-session-reviewed-weather-scenario-4',
+          appInstanceId: launchPart.appInstanceId,
+          bridgeToken: 'bridge-token-reviewed-weather-scenario-4',
+          ackNonce: 'bridge-nonce-reviewed-weather-scenario-4',
+          sequence: 1,
+        },
+        now: () => 41_000,
+        createId: () => 'event-reviewed-weather-ready-4',
+      })
+
+      const chicagoSnapshot = createWeatherDashboardReadySnapshot({
+        request: 'Open Weather Dashboard for Chicago and show the forecast.',
+        locationQuery: 'Chicago',
+        locationName: 'Chicago, Illinois, United States',
+        timezone: 'America/Chicago',
+        units: 'imperial',
+        fetchedAt: 42_000,
+        staleAt: 642_000,
+        referenceTime: 43_000,
+        cacheStatus: 'miss',
+        current: {
+          temperature: 72,
+          apparentTemperature: 70,
+          weatherCode: 1,
+          conditionLabel: 'Mostly clear',
+          windSpeed: 9,
+        },
+      })
+
+      const active = applyReviewedAppLaunchBridgeEventToSession(readied, {
+        messageId: 'assistant-reviewed-weather-scenario-1',
+        part: getLaunchPart(readied),
+        event: {
+          kind: 'app.state',
+          bridgeSessionId: 'bridge-session-reviewed-weather-scenario-4',
+          appInstanceId: launchPart.appInstanceId,
+          bridgeToken: 'bridge-token-reviewed-weather-scenario-4',
+          sequence: 2,
+          idempotencyKey: 'state-reviewed-weather-scenario-6',
+          snapshot: chicagoSnapshot,
+        },
+        now: () => 42_000,
+        createId: () => 'event-reviewed-weather-state-5',
+      })
+
+      const completed = applyReviewedAppLaunchBridgeEventToSession(active, {
+        messageId: 'assistant-reviewed-weather-scenario-1',
+        part: getLaunchPart(active),
+        event: {
+          kind: 'app.complete',
+          bridgeSessionId: 'bridge-session-reviewed-weather-scenario-4',
+          appInstanceId: launchPart.appInstanceId,
+          bridgeToken: 'bridge-token-reviewed-weather-scenario-4',
+          sequence: 3,
+          idempotencyKey: 'complete-reviewed-weather-scenario-7',
+          completion: createWeatherDashboardCloseCompletion(chicagoSnapshot),
+        },
+        now: () => 44_000,
+        createId: () => 'event-reviewed-weather-complete-4',
+      })
+
+      expect(getLaunchPart(completed)).toMatchObject({
+        lifecycle: 'complete',
+        summaryForModel: expect.stringContaining('Weather Dashboard closed for Chicago, Illinois, United States.'),
+      })
+
+      const compactedSummary: Message = {
+        id: 'summary-reviewed-weather-scenario-3',
+        role: 'assistant',
+        timestamp: 45_000,
+        isSummary: true,
+        contentParts: [{ type: 'text', text: 'Compacted summary of the closed Weather Dashboard session.' }],
+      }
+      const followUp = createMessage('weather-follow-up-user-3', 'user', 'What weather dashboard did you last close?')
+      const compactionPoints: CompactionPoint[] = [
+        {
+          summaryMessageId: compactedSummary.id,
+          boundaryMessageId: 'assistant-reviewed-weather-scenario-1',
+          createdAt: 45_000,
+        },
+      ]
+      const context = buildContextForAI({
+        messages: [...completed.messages, followUp, compactedSummary],
+        compactionPoints,
+      })
+
+      const injectedContext = context.find((message) => message.id.startsWith(CHATBRIDGE_APP_CONTEXT_MESSAGE_PREFIX))
+      const text = (injectedContext?.contentParts[0] as { text?: string } | undefined)?.text ?? ''
+
+      expect(text).toContain('Weather Dashboard closed for Chicago, Illinois, United States.')
+      expect(text).toContain('72°F and Mostly clear')
     }))
 })

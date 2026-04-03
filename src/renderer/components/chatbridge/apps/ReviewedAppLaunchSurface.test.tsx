@@ -5,8 +5,18 @@
 import { MantineProvider } from '@mantine/core'
 import { fireEvent, render, waitFor } from '@testing-library/react'
 import type { BridgeReadyEvent } from '@shared/chatbridge/bridge-session'
+import {
+  clearChatBridgeObservabilityState,
+  createWeatherDashboardDegradedSnapshot,
+  listChatBridgeObservabilityEvents,
+} from '@shared/chatbridge'
 import type { MessageAppPart, Session } from '@shared/types'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  applyReviewedAppLaunchBootstrapToSession,
+  applyReviewedAppLaunchBridgeEventToSession,
+  applyReviewedAppLaunchBridgeReadyToSession,
+} from '@/packages/chatbridge/reviewed-app-launch'
 
 const mocks = vi.hoisted(() => {
   const controller = {
@@ -196,6 +206,80 @@ function createWeatherReviewedLaunchPart(): MessageAppPart {
   }
 }
 
+function createWeatherLaunchMessage(part: MessageAppPart) {
+  return {
+    id: 'assistant-reviewed-launch-weather-1',
+    role: 'assistant' as const,
+    contentParts: [part],
+  }
+}
+
+function getWeatherLaunchPart(session: Session): MessageAppPart {
+  const message = session.messages.find((candidate) => candidate.id === 'assistant-reviewed-launch-weather-1')
+  const launchPart = message?.contentParts.find((part): part is MessageAppPart => part.type === 'app')
+
+  if (!launchPart) {
+    throw new Error('Expected a reviewed Weather Dashboard launch part.')
+  }
+
+  return launchPart
+}
+
+function createActiveWeatherSession(snapshot = createWeatherSnapshot({
+  locationQuery: 'Chicago',
+  locationName: 'Chicago, Illinois, United States',
+  headline: '72°F and Mostly clear',
+  conditionLabel: 'Mostly clear',
+  temperature: 72,
+})) {
+  const part = createWeatherReviewedLaunchPart()
+  const baseSession: Session = {
+    id: 'session-reviewed-launch-weather-1',
+    name: 'Reviewed Weather launch session',
+    messages: [createWeatherLaunchMessage(part)],
+    settings: {},
+  }
+
+  const bootstrapped = applyReviewedAppLaunchBootstrapToSession(baseSession, {
+    messageId: 'assistant-reviewed-launch-weather-1',
+    part,
+    bridgeSessionId: 'bridge-session-reviewed-weather-active',
+    now: () => 10_000,
+    createId: () => 'event-reviewed-weather-created-active',
+  })
+
+  const readied = applyReviewedAppLaunchBridgeReadyToSession(bootstrapped, {
+    messageId: 'assistant-reviewed-launch-weather-1',
+    part: getWeatherLaunchPart(bootstrapped),
+    event: {
+      kind: 'app.ready',
+      bridgeSessionId: 'bridge-session-reviewed-weather-active',
+      appInstanceId: part.appInstanceId,
+      bridgeToken: 'bridge-token-reviewed-weather-active',
+      ackNonce: 'bridge-nonce-reviewed-weather-active',
+      sequence: 1,
+    },
+    now: () => 11_000,
+    createId: () => 'event-reviewed-weather-ready-active',
+  })
+
+  return applyReviewedAppLaunchBridgeEventToSession(readied, {
+    messageId: 'assistant-reviewed-launch-weather-1',
+    part: getWeatherLaunchPart(readied),
+    event: {
+      kind: 'app.state',
+      bridgeSessionId: 'bridge-session-reviewed-weather-active',
+      appInstanceId: part.appInstanceId,
+      bridgeToken: 'bridge-token-reviewed-weather-active',
+      sequence: 2,
+      idempotencyKey: 'state-reviewed-weather-active',
+      snapshot,
+    },
+    now: () => 12_000,
+    createId: () => 'event-reviewed-weather-state-active',
+  })
+}
+
 describe('ReviewedAppLaunchSurface', () => {
   beforeAll(() => {
     Object.defineProperty(window, 'matchMedia', {
@@ -215,6 +299,7 @@ describe('ReviewedAppLaunchSurface', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    clearChatBridgeObservabilityState()
     mocks.invoke.mockImplementation(async (channel: string, query?: { location?: string; refresh?: boolean }) => {
       if (channel !== 'chatbridge-weather:get-dashboard') {
         throw new Error(`Unexpected channel: ${channel}`)
@@ -430,6 +515,100 @@ describe('ReviewedAppLaunchSurface', () => {
           refresh: false,
         })
       )
+    })
+  })
+
+  it('keeps a stale persisted weather snapshot visible when reopen refresh degrades and the host cache is cold', async () => {
+    const part = createWeatherReviewedLaunchPart()
+    part.snapshot = createWeatherSnapshot({
+      locationQuery: 'Chicago',
+      locationName: 'Chicago, Illinois, United States',
+      headline: '72°F and Mostly clear',
+      conditionLabel: 'Mostly clear',
+      temperature: 72,
+      statusText: 'Live weather',
+    })
+
+    mocks.invoke.mockResolvedValueOnce({
+      snapshot: createWeatherDashboardDegradedSnapshot({
+        request: 'Open Weather Dashboard for Chicago and show the forecast.',
+        locationQuery: 'Chicago',
+        locationName: 'Chicago',
+        units: 'imperial',
+        fetchedAt: 1717000900000,
+        staleAt: 1717001500000,
+        referenceTime: 1717000900000,
+        degraded: {
+          reason: 'upstream-timeout',
+          title: 'Upstream timed out',
+          message: 'The host kept the last good weather snapshot visible while upstream data is unavailable.',
+          retryable: true,
+          usingStaleSnapshot: false,
+        },
+      }),
+    })
+
+    const { findByText, getByRole } = render(
+      <MantineProvider>
+        <ReviewedAppLaunchSurface
+          part={part}
+          sessionId="session-reviewed-launch-weather-1"
+          messageId="assistant-reviewed-launch-weather-1"
+        />
+      </MantineProvider>
+    )
+
+    await findByText('Chicago, Illinois, United States')
+    await waitFor(() => {
+      expect(getByRole('alert').textContent).toContain('Upstream timed out')
+    })
+
+    expect(getByRole('alert')).toBeTruthy()
+    expect(getByRole('button', { name: /refresh weather/i })).toBeTruthy()
+    expect(listChatBridgeObservabilityEvents({ appId: 'weather-dashboard' }).at(-1)).toMatchObject({
+      kind: 'app-event-accepted',
+      status: 'degraded',
+      details: expect.arrayContaining(['cacheStatus: stale-fallback', 'fallbackSource: renderer-persisted-snapshot']),
+    })
+  })
+
+  it('records an explicit completion summary when the user closes Weather Dashboard', async () => {
+    const { getByRole, findByText } = render(
+      <MantineProvider>
+        <ReviewedAppLaunchSurface
+          part={createWeatherReviewedLaunchPart()}
+          sessionId="session-reviewed-launch-weather-1"
+          messageId="assistant-reviewed-launch-weather-1"
+        />
+      </MantineProvider>
+    )
+
+    await findByText('Chicago, Illinois, United States')
+    fireEvent.click(getByRole('button', { name: /close dashboard/i }))
+
+    await waitFor(() => {
+      expect(mocks.updateSessionWithMessages).toHaveBeenCalledTimes(4)
+    })
+
+    const lastCall = mocks.updateSessionWithMessages.mock.calls.at(-1)
+    expect(lastCall).toBeTruthy()
+    if (!lastCall) {
+      return
+    }
+
+    const [persistedSessionId, updater] = lastCall as unknown as [string, (session: Session) => Promise<Session> | Session]
+    expect(persistedSessionId).toBe('session-reviewed-launch-weather-1')
+    expect(typeof updater).toBe('function')
+
+    const nextSession = await updater(createActiveWeatherSession())
+    expect(getWeatherLaunchPart(nextSession)).toMatchObject({
+      lifecycle: 'complete',
+      summaryForModel: expect.stringContaining('Weather Dashboard closed for Chicago, Illinois, United States.'),
+    })
+    expect(listChatBridgeObservabilityEvents({ appId: 'weather-dashboard' }).at(-1)).toMatchObject({
+      kind: 'app-event-accepted',
+      status: 'healthy',
+      details: expect.arrayContaining(['eventKind: app.complete']),
     })
   })
 })

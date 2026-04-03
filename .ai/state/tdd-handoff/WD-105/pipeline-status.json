@@ -1,0 +1,29 @@
+{
+  "storyId": "WD-105",
+  "lane": "standard",
+  "workflow": "tdd-pipeline",
+  "mode": "manual-single-agent",
+  "status": "green",
+  "redCheckpoint": {
+    "command": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/shared/chatbridge/apps/weather-dashboard.test.ts src/renderer/components/chatbridge/apps/weather/WeatherDashboardPanel.test.tsx src/renderer/components/chatbridge/apps/ReviewedAppLaunchSurface.test.tsx test/integration/chatbridge/scenarios/weather-dashboard-flagship.test.ts",
+    "result": "failed before implementation stabilized"
+  },
+  "greenCheckpoints": [
+    {
+      "command": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/shared/chatbridge/apps/weather-dashboard.test.ts src/renderer/components/chatbridge/apps/weather/WeatherDashboardPanel.test.tsx src/renderer/components/chatbridge/apps/ReviewedAppLaunchSurface.test.tsx test/integration/chatbridge/scenarios/weather-dashboard-flagship.test.ts",
+      "result": "passed"
+    },
+    {
+      "command": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/renderer/packages/chatbridge/reviewed-app-launch.test.ts src/shared/chatbridge/live-seeds.test.ts",
+      "result": "passed"
+    },
+    {
+      "command": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm test && pnpm check && pnpm lint && pnpm build && git diff --check",
+      "result": "passed"
+    }
+  ],
+  "qualityGates": {
+    "propertyTests": "skipped",
+    "mutationTesting": "skipped"
+  }
+}

@@ -2090,10 +2090,16 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
       id: 'weather-dashboard',
       name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Weather dashboard`,
       description:
-        'Seeds the reviewed Weather Dashboard launch so you can verify the host-owned weather snapshot, refresh flow, location swap controls, and inline continuity summary inside the normal chat shell.',
+        'Seeds the reviewed Weather Dashboard launch so you can verify the host-owned weather snapshot, stale fallback behavior, location swap controls, and the explicit close-to-chat handoff inside the normal chat shell.',
       fixtureRole: 'active-flagship',
       smokeSupport: 'supported',
-      coverage: ['Weather runtime', 'Host-owned weather fetch', 'Refresh continuity', 'Location continuity'],
+      coverage: [
+        'Weather runtime',
+        'Host-owned weather fetch',
+        'Refresh continuity',
+        'Location continuity',
+        'Close handoff',
+      ],
       auditSteps: [
         {
           action: 'Open the seeded Weather Dashboard session and wait for the initial host-owned weather snapshot to load.',
@@ -2114,6 +2120,11 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
           action: 'Ask a follow-up such as `Summarize the weather you just showed me.` in the same thread.',
           expected:
             'Later chat stays grounded in the latest host-owned weather summary for the active location and does not invent provider details that were never rendered or normalized.',
+        },
+        {
+          action: 'Click `Close dashboard`, then ask what weather was last shown in the thread.',
+          expected:
+            'The weather app closes with an explicit host-owned completion summary, and the follow-up answer stays grounded in that last validated snapshot instead of inventing a fresh provider read.',
         },
       ],
       sessionInput: buildChatBridgeWeatherDashboardSessionFixture(),
