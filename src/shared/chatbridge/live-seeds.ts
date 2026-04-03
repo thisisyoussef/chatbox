@@ -2098,7 +2098,7 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
         {
           action: 'Open the seeded Weather Dashboard session and wait for the initial host-owned weather snapshot to load.',
           expected:
-            'The dashboard renders inline with current conditions, a short forecast, and an explicit host-status card instead of a plain text fallback.',
+            'The dashboard renders inline with current conditions, hourly and daily outlook sections, alert coverage, and explicit host snapshot cards instead of a plain text fallback.',
         },
         {
           action: 'Click `Refresh weather` after the first snapshot loads.',

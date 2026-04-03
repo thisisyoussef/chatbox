@@ -1,5 +1,10 @@
 import { Button, Loader, Text } from '@mantine/core'
-import type { WeatherDashboardSnapshot } from '@shared/chatbridge'
+import {
+  formatWeatherAlertTime,
+  formatWeatherTemperature,
+  formatWeatherWindSpeed,
+  type WeatherDashboardSnapshot,
+} from '@shared/chatbridge'
 
 interface WeatherDashboardPanelProps {
   snapshot: WeatherDashboardSnapshot
@@ -23,14 +28,64 @@ function getStatusBadgeClasses(snapshot: WeatherDashboardPanelProps['snapshot'])
   return 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-200'
 }
 
+function getHeroSurfaceClasses(snapshot: WeatherDashboardPanelProps['snapshot']) {
+  if (snapshot.status === 'degraded') {
+    return 'border-amber-200 bg-[linear-gradient(145deg,rgba(254,243,199,0.92),rgba(255,255,255,0.98))] dark:border-amber-800/60 dark:bg-[linear-gradient(145deg,rgba(120,53,15,0.35),rgba(15,23,42,0.92))]'
+  }
+
+  if (snapshot.status === 'unavailable') {
+    return 'border-rose-200 bg-[linear-gradient(145deg,rgba(255,228,230,0.95),rgba(255,255,255,0.98))] dark:border-rose-800/60 dark:bg-[linear-gradient(145deg,rgba(136,19,55,0.35),rgba(15,23,42,0.92))]'
+  }
+
+  return 'border-sky-200 bg-[linear-gradient(145deg,rgba(224,242,254,0.95),rgba(255,255,255,0.98))] dark:border-sky-900/60 dark:bg-[linear-gradient(145deg,rgba(12,74,110,0.38),rgba(15,23,42,0.92))]'
+}
+
+function getHourlyEmptyState(snapshot: WeatherDashboardPanelProps['snapshot']) {
+  if (snapshot.status === 'loading') {
+    return 'Hourly outlook will populate after the host returns the forecast.'
+  }
+
+  return 'Hourly outlook is not available for this snapshot.'
+}
+
+function getDailyEmptyState(snapshot: WeatherDashboardPanelProps['snapshot']) {
+  if (snapshot.status === 'loading') {
+    return 'Daily outlook will populate after the host returns the forecast.'
+  }
+
+  return 'Daily outlook is not available for this snapshot.'
+}
+
+function getAlertEmptyState(snapshot: WeatherDashboardPanelProps['snapshot']) {
+  if (snapshot.status === 'loading') {
+    return 'Weather alerts will appear here after the host returns the forecast.'
+  }
+
+  return 'No active weather alerts for this snapshot.'
+}
+
+const PANEL_SECTION_CLASSES =
+  'rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/50'
+
+const DETAIL_CARD_CLASSES =
+  'rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-3'
+
 export function WeatherDashboardPanel({ snapshot, refreshing, onRefresh }: WeatherDashboardPanelProps) {
   const hasCurrentData = Boolean(snapshot.current)
-  const showForecast = snapshot.forecast.length > 0
+  const hourlyItems = snapshot.hourly
+  const dailyItems = snapshot.daily.length > 0 ? snapshot.daily : snapshot.forecast
+  const hasHourlyData = hourlyItems.length > 0
+  const hasDailyData = dailyItems.length > 0
+  const hasAlerts = snapshot.alerts.length > 0
+  const requestedLocationLabel =
+    snapshot.locationQuery && snapshot.locationQuery !== snapshot.locationName
+      ? `Requested as ${snapshot.locationQuery}`
+      : null
 
   return (
     <div data-testid="weather-dashboard-panel" className="w-full overflow-hidden rounded-[24px] border border-chatbox-border-primary">
       <div className="bg-chatbox-background-primary p-4">
-        <div className="overflow-hidden rounded-[24px] border border-sky-200 bg-[linear-gradient(145deg,rgba(224,242,254,0.95),rgba(255,255,255,0.98))] p-5 dark:border-sky-900/60 dark:bg-[linear-gradient(145deg,rgba(12,74,110,0.38),rgba(15,23,42,0.92))]">
+        <div className={`overflow-hidden rounded-[24px] border p-5 ${getHeroSurfaceClasses(snapshot)}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <Text size="xs" fw={700} className="uppercase tracking-[0.14em] text-sky-700 dark:text-sky-300">
@@ -42,6 +97,11 @@ export function WeatherDashboardPanel({ snapshot, refreshing, onRefresh }: Weath
               <Text size="sm" c="dimmed" className="mt-2 max-w-[52ch] whitespace-pre-wrap">
                 {snapshot.headline}
               </Text>
+              {requestedLocationLabel ? (
+                <Text size="xs" c="dimmed" className="mt-2 uppercase tracking-[0.08em]">
+                  {requestedLocationLabel}
+                </Text>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -60,8 +120,8 @@ export function WeatherDashboardPanel({ snapshot, refreshing, onRefresh }: Weath
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.9fr)]">
-            <section className="rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
+          <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <section className={PANEL_SECTION_CLASSES}>
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
@@ -70,7 +130,7 @@ export function WeatherDashboardPanel({ snapshot, refreshing, onRefresh }: Weath
                   {hasCurrentData ? (
                     <>
                       <Text className="mt-2 text-[42px] font-black leading-none text-chatbox-primary">
-                        {snapshot.current ? `${Math.round(snapshot.current.temperature)}°` : '--'}
+                        {snapshot.current ? formatWeatherTemperature(snapshot.current.temperature, snapshot.units) : '--'}
                       </Text>
                       <Text size="sm" c="dimmed" className="mt-2">
                         {snapshot.current?.conditionLabel ?? 'Current conditions unavailable'}
@@ -88,94 +148,202 @@ export function WeatherDashboardPanel({ snapshot, refreshing, onRefresh }: Weath
                   )}
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-2">
-                    <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                      Host status
-                    </Text>
-                    <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
-                      {snapshot.dataStateLabel}
-                    </Text>
-                    <Text size="xs" c="dimmed" className="mt-1">
-                      {snapshot.lastUpdatedLabel}
-                    </Text>
-                  </div>
-                  <div className="rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-2">
-                    <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                      Source
-                    </Text>
-                    <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
-                      {snapshot.sourceLabel}
-                    </Text>
-                    <Text size="xs" c="dimmed" className="mt-1">
-                      {snapshot.refreshHint}
-                    </Text>
-                  </div>
+                <div className="rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-2">
+                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+                    Host status
+                  </Text>
+                  <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
+                    {snapshot.dataStateLabel}
+                  </Text>
                 </div>
               </div>
 
               {hasCurrentData ? (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-3">
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className={DETAIL_CARD_CLASSES}>
                     <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
                       Feels like
                     </Text>
                     <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
                       {typeof snapshot.current?.apparentTemperature === 'number'
-                        ? `${Math.round(snapshot.current.apparentTemperature)}°`
+                        ? formatWeatherTemperature(snapshot.current.apparentTemperature, snapshot.units)
                         : 'Unavailable'}
                     </Text>
                   </div>
-                  <div className="rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-3">
+                  <div className={DETAIL_CARD_CLASSES}>
                     <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
                       Wind
                     </Text>
                     <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
                       {typeof snapshot.current?.windSpeed === 'number'
-                        ? `${Math.round(snapshot.current.windSpeed)} ${snapshot.units === 'imperial' ? 'mph' : 'km/h'}`
+                        ? formatWeatherWindSpeed(snapshot.current.windSpeed, snapshot.units)
                         : 'Unavailable'}
+                    </Text>
+                  </div>
+                  <div className={DETAIL_CARD_CLASSES}>
+                    <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+                      Snapshot summary
+                    </Text>
+                    <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
+                      {snapshot.statusText}
                     </Text>
                   </div>
                 </div>
               ) : null}
             </section>
 
-            <section className="rounded-[22px] border border-white/80 bg-white/90 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
+            <section className={PANEL_SECTION_CLASSES}>
               <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                Next 4 days
+                Host snapshot
               </Text>
-              {showForecast ? (
-                <div className="mt-3 grid gap-2">
-                  {snapshot.forecast.map((day) => (
-                    <div
-                      key={`${day.dateKey}-${day.dayLabel}`}
-                      className="flex items-center justify-between gap-3 rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-3"
-                    >
-                      <div className="min-w-0">
-                        <Text size="sm" fw={700} className="text-chatbox-primary">
-                          {day.dayLabel}
-                        </Text>
-                        <Text size="xs" c="dimmed" className="mt-1">
-                          {day.conditionLabel}
-                          {typeof day.precipitationChance === 'number' ? ` · ${Math.round(day.precipitationChance)}% precip` : ''}
-                        </Text>
-                      </div>
-                      <Text size="sm" fw={700} className="whitespace-nowrap text-chatbox-primary">
-                        {Math.round(day.high)}° / {Math.round(day.low)}°
-                      </Text>
-                    </div>
-                  ))}
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className={DETAIL_CARD_CLASSES}>
+                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+                    Freshness window
+                  </Text>
+                  <Text size="sm" fw={700} className="mt-1 whitespace-pre-wrap text-chatbox-primary">
+                    {snapshot.lastUpdatedLabel}
+                  </Text>
                 </div>
-              ) : (
-                <Text size="sm" c="dimmed" className="mt-3">
-                  {snapshot.status === 'loading'
-                    ? 'The host is still assembling the short forecast.'
-                    : 'Short forecast details are not available for this request.'}
-                </Text>
-              )}
+                <div className={DETAIL_CARD_CLASSES}>
+                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+                    Source
+                  </Text>
+                  <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
+                    {snapshot.sourceLabel}
+                  </Text>
+                </div>
+                <div className={DETAIL_CARD_CLASSES}>
+                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+                    Status
+                  </Text>
+                  <Text size="sm" fw={700} className="mt-1 text-chatbox-primary">
+                    {snapshot.dataStateLabel}
+                  </Text>
+                </div>
+                <div className={DETAIL_CARD_CLASSES}>
+                  <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+                    Next step
+                  </Text>
+                  <Text size="sm" fw={700} className="mt-1 whitespace-pre-wrap text-chatbox-primary">
+                    {snapshot.refreshHint}
+                  </Text>
+                </div>
+              </div>
             </section>
           </div>
         </div>
+
+        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+          <section className={PANEL_SECTION_CLASSES}>
+            <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+              Next hours
+            </Text>
+            {hasHourlyData ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {hourlyItems.map((hour) => (
+                  <div key={hour.timeKey} className={DETAIL_CARD_CLASSES}>
+                    <Text size="sm" fw={700} className="text-chatbox-primary">
+                      {hour.hourLabel}
+                    </Text>
+                    <Text size="lg" fw={800} className="mt-2 text-chatbox-primary">
+                      {formatWeatherTemperature(hour.temperature, snapshot.units)}
+                    </Text>
+                    <Text size="xs" c="dimmed" className="mt-1">
+                      {hour.conditionLabel}
+                    </Text>
+                    <Text size="xs" c="dimmed" className="mt-2">
+                      {typeof hour.precipitationChance === 'number'
+                        ? `${Math.round(hour.precipitationChance)}% precipitation`
+                        : 'Precipitation unavailable'}
+                    </Text>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Text size="sm" c="dimmed" className="mt-3">
+                {getHourlyEmptyState(snapshot)}
+              </Text>
+            )}
+          </section>
+
+          <section className={PANEL_SECTION_CLASSES}>
+            <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+              Daily outlook
+            </Text>
+            {hasDailyData ? (
+              <div className="mt-3 grid gap-2">
+                {dailyItems.map((day) => (
+                  <div
+                    key={`${day.dateKey}-${day.dayLabel}`}
+                    className="flex items-center justify-between gap-3 rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <Text size="sm" fw={700} className="text-chatbox-primary">
+                        {day.dayLabel}
+                      </Text>
+                      <Text size="xs" c="dimmed" className="mt-1">
+                        {day.conditionLabel}
+                        {typeof day.precipitationChance === 'number'
+                          ? ` · ${Math.round(day.precipitationChance)}% precip`
+                          : ''}
+                      </Text>
+                    </div>
+                    <Text size="sm" fw={700} className="whitespace-nowrap text-chatbox-primary">
+                      {formatWeatherTemperature(day.high, snapshot.units)} / {formatWeatherTemperature(day.low, snapshot.units)}
+                    </Text>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Text size="sm" c="dimmed" className="mt-3">
+                {getDailyEmptyState(snapshot)}
+              </Text>
+            )}
+          </section>
+        </div>
+
+        <section className={`mt-4 ${PANEL_SECTION_CLASSES}`}>
+          <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
+            Active alerts
+          </Text>
+          {hasAlerts ? (
+            <div className="mt-3 grid gap-3">
+              {snapshot.alerts.map((alert) => (
+                <div key={`${alert.source}-${alert.event}-${alert.startsAt}`} className={DETAIL_CARD_CLASSES}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <Text size="sm" fw={700} className="text-chatbox-primary">
+                        {alert.event}
+                      </Text>
+                      <Text size="xs" c="dimmed" className="mt-1">
+                        {alert.source}
+                      </Text>
+                    </div>
+                    <Text size="xs" c="dimmed" className="text-right">
+                      {formatWeatherAlertTime(alert.startsAt, snapshot.timezone)}
+                      {typeof alert.endsAt === 'number'
+                        ? ` to ${formatWeatherAlertTime(alert.endsAt, snapshot.timezone)}`
+                        : ''}
+                    </Text>
+                  </div>
+                  <Text size="sm" className="mt-3 whitespace-pre-wrap text-chatbox-primary">
+                    {alert.description}
+                  </Text>
+                  {alert.tags.length > 0 ? (
+                    <Text size="xs" c="dimmed" className="mt-2 uppercase tracking-[0.08em]">
+                      {alert.tags.join(' · ')}
+                    </Text>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Text size="sm" c="dimmed" className="mt-3">
+              {getAlertEmptyState(snapshot)}
+            </Text>
+          )}
+        </section>
 
         {snapshot.degraded ? (
           <div
