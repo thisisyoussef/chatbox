@@ -3,9 +3,10 @@
  */
 
 import { MantineProvider } from '@mantine/core'
-import { fireEvent, render, screen } from '@testing-library/react'
 import { createChatBridgeChessRuntimeSnapshot } from '@shared/chatbridge'
+import { createInitialDrawingKitAppSnapshot } from '@shared/chatbridge/apps/drawing-kit'
 import type { MessageAppPart } from '@shared/types'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FloatingChatBridgeRuntimeShell } from './FloatingChatBridgeRuntimeShell'
 
@@ -36,7 +37,43 @@ beforeEach(() => {
   document.body.innerHTML = ''
 })
 
-function createPart(): MessageAppPart {
+function createPart(appId: 'chess' | 'drawing-kit' = 'chess'): MessageAppPart {
+  if (appId === 'drawing-kit') {
+    const snapshot = createInitialDrawingKitAppSnapshot({
+      snapshot: {
+        ...createInitialDrawingKitAppSnapshot(),
+        status: 'drawing',
+        statusText: 'Round in progress',
+        strokeCount: 3,
+        previewMarks: [
+          {
+            kind: 'line',
+            tool: 'brush',
+            color: '#267df0',
+            width: 5,
+            points: [
+              { x: 0.2, y: 0.3 },
+              { x: 0.5, y: 0.55 },
+            ],
+          },
+        ],
+      },
+    })
+
+    return {
+      type: 'app',
+      appId: 'drawing-kit',
+      appName: 'Drawing Kit',
+      appInstanceId: 'drawing-kit-instance-1',
+      lifecycle: 'active',
+      title: 'Drawing Kit runtime',
+      description: 'Sticky-note doodle board.',
+      summary: snapshot.summary,
+      statusText: snapshot.statusText,
+      snapshot,
+    }
+  }
+
   const snapshot = createChatBridgeChessRuntimeSnapshot()
 
   return {
@@ -154,5 +191,41 @@ describe('FloatingChatBridgeRuntimeShell', () => {
     expect(screen.getByText('App sheet')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /move app overlay/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /resize app overlay/i })).toBeNull()
+  })
+
+  it('expands persisted Drawing Kit frames back to a usable size', () => {
+    const { viewportElement, portalTarget } = createPortalElements()
+    const onFrameChange = vi.fn()
+
+    render(
+      <MantineProvider>
+        <FloatingChatBridgeRuntimeShell
+          sessionId="session-1"
+          messageId="message-1"
+          part={createPart('drawing-kit')}
+          minimized={false}
+          expanded={false}
+          frame={{
+            x: 520,
+            y: 320,
+            width: 420,
+            height: 320,
+          }}
+          portalTarget={portalTarget}
+          viewportElement={viewportElement}
+          onMinimizeChange={vi.fn()}
+          onExpandedChange={vi.fn()}
+          onFrameChange={onFrameChange}
+          onJumpToSource={vi.fn()}
+        />
+      </MantineProvider>
+    )
+
+    expect(onFrameChange).toHaveBeenCalledWith({
+      x: 376,
+      y: 136,
+      width: 560,
+      height: 560,
+    })
   })
 })
