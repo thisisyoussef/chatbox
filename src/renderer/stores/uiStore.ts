@@ -4,8 +4,24 @@ import type { VirtuosoHandle } from 'react-virtuoso'
 import { v4 as uuidv4 } from 'uuid'
 import { createStore, useStore } from 'zustand'
 import { combine, persist } from 'zustand/middleware'
+import type { FloatingShellFrame } from '@/components/chatbridge/floating-shell-layout'
 import platform from '@/platform'
 import { safeStorage } from './safeStorage'
+
+function readInitialTheme(): 'light' | 'dark' {
+  try {
+    return globalThis.localStorage?.getItem('initial-theme') === 'dark' ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+}
+
+interface ChatBridgeFloatingShellState {
+  appInstanceId: string
+  minimized: boolean
+  expanded: boolean
+  frame?: FloatingShellFrame
+}
 
 // UI store for managing UI-related state
 // 不能使用immer middleware，会导致RefObject出问题
@@ -15,7 +31,7 @@ export const uiStore = createStore(
       {
         toasts: [] as Toast[],
         quote: '',
-        realTheme: localStorage.getItem('initial-theme') === 'dark' ? 'dark' : ('light' as 'light' | 'dark'),
+        realTheme: readInitialTheme(),
         messageListElement: null as RefObject<HTMLDivElement> | null,
         messageScrolling: null as RefObject<VirtuosoHandle> | null,
         messageScrollingAtTop: false,
@@ -45,13 +61,7 @@ export const uiStore = createStore(
         widthFull: false, // Stored UI preference
         showCopilotsInNewSession: false,
         sidebarWidth: null as number | null, // Custom sidebar width, null means use default
-        chatBridgeFloatingShellMap: {} as Record<
-          string,
-          {
-            appInstanceId: string
-            minimized: boolean
-          }
-        >,
+        chatBridgeFloatingShellMap: {} as Record<string, ChatBridgeFloatingShellState>,
       },
       (set, get) => ({
         addToast: (content: string, duration?: number) => {
@@ -218,6 +228,14 @@ export const uiStore = createStore(
               [sessionId]: {
                 appInstanceId,
                 minimized,
+                expanded:
+                  state.chatBridgeFloatingShellMap[sessionId]?.appInstanceId === appInstanceId
+                    ? state.chatBridgeFloatingShellMap[sessionId]?.expanded ?? false
+                    : false,
+                frame:
+                  state.chatBridgeFloatingShellMap[sessionId]?.appInstanceId === appInstanceId
+                    ? state.chatBridgeFloatingShellMap[sessionId]?.frame
+                    : undefined,
               },
             },
           }))
@@ -242,6 +260,44 @@ export const uiStore = createStore(
           })
         },
 
+        setChatBridgeFloatingShellExpanded: (sessionId: string, expanded: boolean) => {
+          set((state) => {
+            const current = state.chatBridgeFloatingShellMap[sessionId]
+            if (!current) {
+              return state
+            }
+
+            return {
+              chatBridgeFloatingShellMap: {
+                ...state.chatBridgeFloatingShellMap,
+                [sessionId]: {
+                  ...current,
+                  expanded,
+                },
+              },
+            }
+          })
+        },
+
+        setChatBridgeFloatingShellFrame: (sessionId: string, frame: FloatingShellFrame) => {
+          set((state) => {
+            const current = state.chatBridgeFloatingShellMap[sessionId]
+            if (!current) {
+              return state
+            }
+
+            return {
+              chatBridgeFloatingShellMap: {
+                ...state.chatBridgeFloatingShellMap,
+                [sessionId]: {
+                  ...current,
+                  frame,
+                },
+              },
+            }
+          })
+        },
+
         clearChatBridgeFloatingShellState: (sessionId: string) => {
           set((state) => {
             if (!state.chatBridgeFloatingShellMap[sessionId]) {
@@ -257,7 +313,35 @@ export const uiStore = createStore(
     ),
     {
       name: 'ui-store',
-      version: 0,
+      version: 1,
+      migrate: (persistedState, version) => {
+        if (version >= 1) {
+          return persistedState
+        }
+
+        const state = persistedState as {
+          chatBridgeFloatingShellMap?: Record<string, { appInstanceId: string; minimized: boolean }>
+        }
+
+        if (!state?.chatBridgeFloatingShellMap) {
+          return persistedState
+        }
+
+        return {
+          ...state,
+          chatBridgeFloatingShellMap: Object.fromEntries(
+            Object.entries(state.chatBridgeFloatingShellMap).map(([sessionId, shellState]) => [
+              sessionId,
+              {
+                appInstanceId: shellState.appInstanceId,
+                minimized: shellState.minimized,
+                expanded: false,
+                frame: undefined,
+              } satisfies ChatBridgeFloatingShellState,
+            ])
+          ),
+        }
+      },
       partialize: (state) => ({
         widthFull: state.widthFull,
         showCopilotsInNewSession: state.showCopilotsInNewSession,

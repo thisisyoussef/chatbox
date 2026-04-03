@@ -84,6 +84,9 @@ export const DrawingKitAppSnapshotSchema = z.object({
 
 export type DrawingKitAppSnapshot = z.infer<typeof DrawingKitAppSnapshotSchema>
 
+export const DrawingKitDrawShapeSchema = z.enum(['squiggle', 'circle', 'box', 'star', 'burst', 'sticker'])
+export type DrawingKitDrawShape = z.infer<typeof DrawingKitDrawShapeSchema>
+
 function hashString(value: string) {
   let hash = 0
   for (const character of value) {
@@ -334,6 +337,96 @@ export function getDrawingKitFallbackText(snapshot?: DrawingKitAppSnapshot | nul
   return `The host can fall back to checkpoint ${snapshot.checkpointId} with "${snapshot.checkpointSummary}" even if the live canvas stops responding.`
 }
 
+function rebuildDrawingKitSnapshot(
+  snapshot: DrawingKitAppSnapshot,
+  overrides: Partial<
+    Pick<
+      DrawingKitAppSnapshot,
+      'selectedTool' | 'status' | 'caption' | 'checkpointId' | 'lastUpdatedAt' | 'previewMarks'
+    >
+  >
+) {
+  const nextPreviewMarks = overrides.previewMarks ?? snapshot.previewMarks
+  return createDrawingKitAppSnapshot({
+    request: snapshot.request,
+    roundLabel: snapshot.roundLabel,
+    roundPrompt: snapshot.roundPrompt,
+    rewardLabel: snapshot.rewardLabel,
+    selectedTool: overrides.selectedTool ?? snapshot.selectedTool,
+    status: overrides.status ?? snapshot.status,
+    caption: overrides.caption ?? snapshot.caption,
+    strokeCount: nextPreviewMarks.length,
+    stickerCount: nextPreviewMarks.filter((mark) => mark.kind === 'stamp').length,
+    checkpointId: overrides.checkpointId ?? snapshot.checkpointId,
+    lastUpdatedAt: overrides.lastUpdatedAt ?? Date.now(),
+    previewMarks: nextPreviewMarks,
+  })
+}
+
+export function setDrawingKitSelectedTool(
+  snapshot: DrawingKitAppSnapshot,
+  selectedTool: DrawingKitTool,
+  options: { lastUpdatedAt?: number } = {}
+) {
+  return rebuildDrawingKitSnapshot(snapshot, {
+    selectedTool,
+    status: snapshot.previewMarks.length > 0 ? 'drawing' : snapshot.status,
+    lastUpdatedAt: options.lastUpdatedAt,
+  })
+}
+
+export function appendDrawingKitPreviewMarks(
+  snapshot: DrawingKitAppSnapshot,
+  marks: DrawingKitPreviewMark[],
+  options: { caption?: string; selectedTool?: DrawingKitTool; lastUpdatedAt?: number } = {}
+) {
+  const previewMarks = clampDrawingKitPreviewMarks([...snapshot.previewMarks, ...marks])
+  return rebuildDrawingKitSnapshot(snapshot, {
+    previewMarks,
+    selectedTool: options.selectedTool ?? snapshot.selectedTool,
+    caption: options.caption ?? snapshot.caption,
+    status: previewMarks.length > 0 ? 'drawing' : 'blank',
+    checkpointId: `drawing-kit-${options.lastUpdatedAt ?? Date.now()}`,
+    lastUpdatedAt: options.lastUpdatedAt,
+  })
+}
+
+export function eraseLastDrawingKitPreviewMark(
+  snapshot: DrawingKitAppSnapshot,
+  options: { lastUpdatedAt?: number } = {}
+) {
+  const previewMarks = snapshot.previewMarks.slice(0, -1)
+  return rebuildDrawingKitSnapshot(snapshot, {
+    previewMarks,
+    status: previewMarks.length > 0 ? 'drawing' : 'blank',
+    checkpointId: `drawing-kit-${options.lastUpdatedAt ?? Date.now()}`,
+    lastUpdatedAt: options.lastUpdatedAt,
+  })
+}
+
+export function clearDrawingKitPreviewMarks(
+  snapshot: DrawingKitAppSnapshot,
+  options: { lastUpdatedAt?: number } = {}
+) {
+  return rebuildDrawingKitSnapshot(snapshot, {
+    previewMarks: [],
+    status: 'blank',
+    checkpointId: `drawing-kit-${options.lastUpdatedAt ?? Date.now()}`,
+    lastUpdatedAt: options.lastUpdatedAt,
+  })
+}
+
+export function bankDrawingKitSnapshot(
+  snapshot: DrawingKitAppSnapshot,
+  options: { caption?: string; lastUpdatedAt?: number } = {}
+) {
+  return rebuildDrawingKitSnapshot(snapshot, {
+    caption: options.caption ?? snapshot.caption,
+    status: 'checkpointed',
+    checkpointId: `drawing-kit-${options.lastUpdatedAt ?? Date.now()}`,
+    lastUpdatedAt: options.lastUpdatedAt,
+  })
+}
 function renderLineMark(mark: Extract<DrawingKitPreviewMark, { kind: 'line' }>, width: number, height: number) {
   const points = mark.points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${Math.round(point.x * width)} ${Math.round(point.y * height)}`)

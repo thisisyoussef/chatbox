@@ -1,9 +1,8 @@
 import {
-  buildChatBridgeChessReasoningPrompt,
   buildChatBridgeSelectedAppContextPrompt,
-  wrapChatBridgeHostTools,
-} from '@shared/chatbridge'
+} from '@shared/chatbridge/app-memory'
 import type { ChatBridgeAppRecordSnapshot } from '@shared/chatbridge/app-records'
+import { buildChatBridgeChessReasoningPrompt } from '@shared/chatbridge/reasoning-context'
 import { getModel } from '@shared/models'
 import { ChatboxAIAPIError, OCRError } from '@shared/models/errors'
 import { createLangSmithConversationMetadata } from '@shared/models/tracing'
@@ -45,6 +44,7 @@ import {
 import fileToolSet from './toolsets/file'
 import { getToolSet } from './toolsets/knowledge-base'
 import websearchToolSet, { parseLinkTool, webSearchTool } from './toolsets/web-search'
+import { createActiveChatBridgeToolSet, upsertChatBridgeActiveAppArtifacts } from '../chatbridge/active-app-tools'
 import { buildChatBridgeAppContextPrompt } from '../context-management/app-context'
 import {
   normalizeChatBridgeExecutionGovernorContentParts,
@@ -430,6 +430,19 @@ export async function streamText(
       }
     }
 
+    if (model.isSupportToolUse()) {
+      const activeAppTools = createActiveChatBridgeToolSet({
+        messages,
+        sessionId,
+      })
+      if (Object.keys(activeAppTools.tools).length > 0) {
+        tools = {
+          ...tools,
+          ...activeAppTools.tools,
+        }
+      }
+    }
+
     const governor = prepareChatBridgeExecutionGovernor({
       messages: params.messages,
       baseTools: tools,
@@ -457,9 +470,11 @@ export async function streamText(
     if (result.contentParts) {
       result = {
         ...result,
-        contentParts: normalizeResultContentParts(infoParts, result.contentParts, {
-          reviewedRouteArtifact,
-        }),
+        contentParts: upsertChatBridgeActiveAppArtifacts(
+          normalizeResultContentParts(infoParts, result.contentParts, {
+            reviewedRouteArtifact,
+          })
+        ),
       }
     }
 

@@ -21,6 +21,8 @@ Stabilize the current chat/session substrate so app-backed artifacts can live in
 - [CB-102 - App-capable message part schema](./cb-102-app-capable-message-part-schema/feature-spec.md)
 - [CB-103 - Host-owned app container shell](./cb-103-host-owned-app-container-shell/feature-spec.md)
 - [CB-104 - App-aware persistence regression coverage](./cb-104-app-aware-persistence-regression-coverage/feature-spec.md)
+- [CB-106 - Floating ChatBridge runtime shell](./cb-106-floating-chatbridge-runtime-shell/feature-spec.md)
+- [CB-107 - Resizable floating overlay runtime shell](./cb-107-resizable-floating-overlay-runtime-shell/feature-spec.md)
 
 ## Exit Criteria
 

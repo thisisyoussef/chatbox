@@ -4,8 +4,8 @@ import { getChatBridgeAppSummaryForModel, selectChatBridgeAppContexts } from '@s
 import type { ChatBridgeSelectedAppContext } from '@shared/chatbridge/app-memory'
 import {
   CHATBRIDGE_APP_MEDIA_VALUES_KEY,
-  describeChatBridgeAppScreenshot,
   formatChatBridgeAppStateDigest,
+  describeChatBridgeAppScreenshot,
 } from '@shared/chatbridge/app-state'
 
 export const CHATBRIDGE_APP_CONTEXT_MESSAGE_PREFIX = 'chatbridge-app-context:'

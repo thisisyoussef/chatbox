@@ -1,10 +1,10 @@
 import type { Message, MessageContentParts } from '@shared/types'
+import { getChatBridgeAppSummaryForModel } from '@shared/chatbridge/app-memory'
 import {
   buildChatBridgeAppStateDigest,
   formatChatBridgeAppStateDigest,
-  getChatBridgeAppSummaryForModel,
   getLatestChatBridgeAppScreenshot,
-} from '@shared/chatbridge'
+} from '@shared/chatbridge/app-state'
 import type { ModelDependencies } from '@shared/types/adapters'
 import type { FilePart, ImagePart, ModelMessage, TextPart } from 'ai'
 import dayjs from 'dayjs'

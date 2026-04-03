@@ -35,6 +35,12 @@ function createSelectedAppContext(
     appInstanceId: part.appInstanceId,
     lifecycle,
     summaryForModel,
+    ...(buildChatBridgeAppStateDigest(part as MessageAppPart)
+      ? { stateDigest: buildChatBridgeAppStateDigest(part as MessageAppPart) ?? undefined }
+      : {}),
+    ...(getLatestChatBridgeAppScreenshot(part.values)
+      ? { latestScreenshot: getLatestChatBridgeAppScreenshot(part.values) ?? undefined }
+      : {}),
   }
 
   const stateDigest = buildChatBridgeAppStateDigest(part as MessageAppPart)
