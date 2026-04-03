@@ -293,38 +293,79 @@ export function formatWeatherWindSpeed(value: number, units: WeatherDashboardUni
   return `${Math.round(value)} ${units === 'imperial' ? 'mph' : 'km/h'}`
 }
 
-export function formatWeatherUpdatedAt(updatedAt: number, timezone?: string) {
+function parseWeatherTimezoneOffset(timezone?: string) {
+  if (!timezone) {
+    return null
+  }
+
+  const match = /^([+-])(\d{2}):(\d{2})$/.exec(timezone.trim())
+  if (!match) {
+    return null
+  }
+
+  const [, sign, hoursText, minutesText] = match
+  const totalMinutes = Number(hoursText) * 60 + Number(minutesText)
+  const direction = sign === '+' ? 1 : -1
+  return direction * totalMinutes * 60 * 1000
+}
+
+function formatWeatherTimezoneLabel(timezone: string) {
+  const match = /^([+-])(\d{2}):(\d{2})$/.exec(timezone.trim())
+  if (!match) {
+    return timezone
+  }
+
+  const [, sign, hoursText, minutesText] = match
+  const hours = String(Number(hoursText))
+  return minutesText === '00' ? `GMT${sign}${hours}` : `GMT${sign}${hours}:${minutesText}`
+}
+
+function formatWeatherTimestamp(
+  timestamp: number,
+  options: Intl.DateTimeFormatOptions,
+  timezone?: string
+) {
+  const offsetMs = parseWeatherTimezoneOffset(timezone)
+
+  if (offsetMs !== null) {
+    return `${new Intl.DateTimeFormat('en-US', {
+      ...options,
+      timeZone: 'UTC',
+    }).format(timestamp + offsetMs)} ${formatWeatherTimezoneLabel(timezone!)}`
+  }
+
   try {
     return new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
+      ...options,
       timeZone: timezone,
       timeZoneName: timezone ? 'short' : undefined,
-    }).format(updatedAt)
+    }).format(timestamp)
   } catch {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(updatedAt)
+    return new Intl.DateTimeFormat('en-US', options).format(timestamp)
   }
 }
 
+export function formatWeatherUpdatedAt(updatedAt: number, timezone?: string) {
+  return formatWeatherTimestamp(
+    updatedAt,
+    {
+      hour: 'numeric',
+      minute: '2-digit',
+    },
+    timezone
+  )
+}
+
 export function formatWeatherAlertTime(timestamp: number, timezone?: string) {
-  try {
-    return new Intl.DateTimeFormat('en-US', {
+  return formatWeatherTimestamp(
+    timestamp,
+    {
       weekday: 'short',
       hour: 'numeric',
       minute: '2-digit',
-      timeZone: timezone,
-      timeZoneName: timezone ? 'short' : undefined,
-    }).format(timestamp)
-  } catch {
-    return new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(timestamp)
-  }
+    },
+    timezone
+  )
 }
 
 export function isWeatherDashboardSnapshotStale(

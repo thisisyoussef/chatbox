@@ -47,7 +47,8 @@ type OpenWeatherGeocodeResult = {
 }
 
 const OPENWEATHER_GEOCODE_URL = 'https://api.openweathermap.org/geo/1.0/direct'
-const OPENWEATHER_ONE_CALL_URL = 'https://api.openweathermap.org/data/3.0/onecall'
+const OPENWEATHER_CURRENT_WEATHER_URL = 'https://api.openweathermap.org/data/2.5/weather'
+const OPENWEATHER_FORECAST_URL = 'https://api.openweathermap.org/data/2.5/forecast'
 const DEFAULT_CACHE_TTL_MS = 10 * 60 * 1000
 const DEFAULT_TIMEOUT_MS = 6_000
 
@@ -70,60 +71,50 @@ const OpenWeatherConditionSchema = z
   })
   .passthrough()
 
-const OpenWeatherOneCallResponseSchema = z
+const OpenWeatherCurrentWeatherResponseSchema = z
   .object({
-    timezone: z.string().trim().min(1),
-    current: z
+    timezone: z.number().int().optional(),
+    main: z
       .object({
-        dt: z.number().int().nonnegative(),
         temp: z.number(),
         feels_like: z.number().optional(),
-        wind_speed: z.number().nonnegative().optional(),
-        weather: z.array(OpenWeatherConditionSchema).min(1),
       })
       .passthrough(),
-    hourly: z
-      .array(
-        z
-          .object({
-            dt: z.number().int().nonnegative(),
-            temp: z.number(),
-            pop: z.number().min(0).max(1).optional(),
-            weather: z.array(OpenWeatherConditionSchema).min(1),
-          })
-          .passthrough()
-      )
+    wind: z
+      .object({
+        speed: z.number().nonnegative().optional(),
+      })
+      .passthrough()
       .optional(),
-    daily: z
-      .array(
-        z
-          .object({
-            dt: z.number().int().nonnegative(),
-            temp: z
-              .object({
-                min: z.number(),
-                max: z.number(),
-              })
-              .passthrough(),
-            pop: z.number().min(0).max(1).optional(),
-            weather: z.array(OpenWeatherConditionSchema).min(1),
-          })
-          .passthrough()
-      )
-      .optional(),
-    alerts: z
-      .array(
-        z
-          .object({
-            sender_name: z.string().trim().min(1),
-            event: z.string().trim().min(1),
-            start: z.number().int().nonnegative(),
-            end: z.number().int().nonnegative().optional(),
-            description: z.string().trim().min(1),
-            tags: z.array(z.string().trim().min(1)).optional(),
-          })
-          .passthrough()
-      )
+    weather: z.array(OpenWeatherConditionSchema).min(1),
+  })
+  .passthrough()
+
+const OpenWeatherForecastListItemSchema = z
+  .object({
+    dt: z.number().int().nonnegative(),
+    main: z
+      .object({
+        temp: z.number(),
+        temp_min: z.number().optional(),
+        temp_max: z.number().optional(),
+      })
+      .passthrough(),
+    pop: z.number().min(0).max(1).optional(),
+    weather: z.array(OpenWeatherConditionSchema).min(1),
+  })
+  .passthrough()
+
+type OpenWeatherForecastListItem = z.infer<typeof OpenWeatherForecastListItemSchema>
+
+const OpenWeatherForecastResponseSchema = z
+  .object({
+    list: z.array(OpenWeatherForecastListItemSchema).default([]),
+    city: z
+      .object({
+        timezone: z.number().int().optional(),
+      })
+      .passthrough()
       .optional(),
   })
   .passthrough()
@@ -234,8 +225,62 @@ function toDateKey(timestampMs: number) {
   return new Date(timestampMs).toISOString().slice(0, 10)
 }
 
+function formatTimezoneOffset(timezoneOffsetSeconds: number) {
+  const totalMinutes = Math.round(timezoneOffsetSeconds / 60)
+  const sign = totalMinutes >= 0 ? '+' : '-'
+  const absoluteMinutes = Math.abs(totalMinutes)
+  const hours = String(Math.floor(absoluteMinutes / 60)).padStart(2, '0')
+  const minutes = String(absoluteMinutes % 60).padStart(2, '0')
+  return `${sign}${hours}:${minutes}`
+}
+
+function toOffsetDateKey(timestampMs: number, timezoneOffsetSeconds: number) {
+  return toDateKey(timestampMs + timezoneOffsetSeconds * 1000)
+}
+
+function toOffsetTimestampMs(timestampMs: number, timezoneOffsetSeconds: number) {
+  return timestampMs + timezoneOffsetSeconds * 1000
+}
+
+function toOffsetHour(timestampMs: number, timezoneOffsetSeconds: number) {
+  return new Date(toOffsetTimestampMs(timestampMs, timezoneOffsetSeconds)).getUTCHours()
+}
+
+function toTemperatureBounds(entry: OpenWeatherForecastListItem) {
+  return {
+    low: entry.main.temp_min ?? entry.main.temp,
+    high: entry.main.temp_max ?? entry.main.temp,
+  }
+}
+
+function resolveRepresentativeForecastEntry(
+  current: {
+    entry: OpenWeatherForecastListItem
+    localHourDistance: number
+    precipitationChance?: number
+  },
+  candidate: {
+    entry: OpenWeatherForecastListItem
+    localHourDistance: number
+    precipitationChance?: number
+  }
+) {
+  if (candidate.localHourDistance < current.localHourDistance) {
+    return candidate
+  }
+
+  if (candidate.localHourDistance > current.localHourDistance) {
+    return current
+  }
+
+  return (candidate.precipitationChance ?? 0) > (current.precipitationChance ?? 0) ? candidate : current
+}
+
 function normalizeForecastSnapshot(
-  payload: unknown
+  payload: {
+    current: unknown
+    forecast: unknown
+  }
 ): {
   timezone: string
   current: WeatherDashboardCurrentConditions
@@ -243,36 +288,45 @@ function normalizeForecastSnapshot(
   daily: WeatherDashboardForecastDay[]
   alerts: WeatherDashboardAlert[]
 } {
-  const parsed = OpenWeatherOneCallResponseSchema.safeParse(payload)
-  if (!parsed.success) {
+  const parsedCurrent = OpenWeatherCurrentWeatherResponseSchema.safeParse(payload.current)
+  if (!parsedCurrent.success) {
+    throw new WeatherGatewayError('invalid-response', 'Weather current conditions response failed schema validation.')
+  }
+
+  const parsedForecast = OpenWeatherForecastResponseSchema.safeParse(payload.forecast)
+  if (!parsedForecast.success) {
     throw new WeatherGatewayError('invalid-response', 'Weather forecast response failed schema validation.')
   }
 
-  const forecast = parsed.data
-  const currentCondition = forecast.current.weather[0]
+  const currentWeather = parsedCurrent.data
+  const forecast = parsedForecast.data
+  const currentCondition = currentWeather.weather[0]
   if (!currentCondition) {
     throw new WeatherGatewayError('invalid-response', 'Weather forecast response did not include current conditions.')
   }
 
+  const timezoneOffsetSeconds = currentWeather.timezone ?? forecast.city?.timezone ?? 0
+  const timezone = formatTimezoneOffset(timezoneOffsetSeconds)
+
   const current: WeatherDashboardCurrentConditions = {
-    temperature: forecast.current.temp,
-    apparentTemperature: forecast.current.feels_like,
+    temperature: currentWeather.main.temp,
+    apparentTemperature: currentWeather.main.feels_like,
     weatherCode: currentCondition.id,
     conditionLabel: normalizeWeatherConditionLabel(currentCondition.id, currentCondition.description),
-    windSpeed: forecast.current.wind_speed,
+    windSpeed: currentWeather.wind?.speed,
   }
 
   const hourlyFormatter = new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',
-    timeZone: forecast.timezone,
+    timeZone: 'UTC',
   })
 
   const dayFormatter = new Intl.DateTimeFormat('en-US', {
     weekday: 'short',
-    timeZone: forecast.timezone,
+    timeZone: 'UTC',
   })
 
-  const hourlyForecast: WeatherDashboardHourlyForecast[] = (forecast.hourly ?? [])
+  const hourlyForecast: WeatherDashboardHourlyForecast[] = forecast.list
     .slice(0, WEATHER_DASHBOARD_HOURLY_LIMIT)
     .map((hour) => {
       const condition = hour.weather[0]
@@ -284,55 +338,88 @@ function normalizeForecastSnapshot(
 
       return {
         timeKey: new Date(timestampMs).toISOString(),
-        hourLabel: hourlyFormatter.format(timestampMs),
-        temperature: hour.temp,
+        hourLabel: hourlyFormatter.format(toOffsetTimestampMs(timestampMs, timezoneOffsetSeconds)),
+        temperature: hour.main.temp,
         weatherCode: condition.id,
         conditionLabel: normalizeWeatherConditionLabel(condition.id, condition.description),
         precipitationChance: toPercent(hour.pop),
       }
     })
 
-  const dailyForecast: WeatherDashboardForecastDay[] = (forecast.daily ?? [])
+  const dailyBuckets = new Map<
+    string,
+    {
+      representative: {
+        entry: OpenWeatherForecastListItem
+        localHourDistance: number
+        precipitationChance?: number
+      }
+      high: number
+      low: number
+      precipitationChance?: number
+      timestampMs: number
+    }
+  >()
+
+  for (const entry of forecast.list) {
+    const condition = entry.weather[0]
+    if (!condition) {
+      throw new WeatherGatewayError('invalid-response', 'Daily weather row did not include a weather condition.')
+    }
+
+    const timestampMs = entry.dt * 1000
+    const dateKey = toOffsetDateKey(timestampMs, timezoneOffsetSeconds)
+    const localHourDistance = Math.abs(toOffsetHour(timestampMs, timezoneOffsetSeconds) - 12)
+    const temperatures = toTemperatureBounds(entry)
+    const representative = {
+      entry,
+      localHourDistance,
+      precipitationChance: entry.pop,
+    }
+    const existing = dailyBuckets.get(dateKey)
+
+    if (!existing) {
+      dailyBuckets.set(dateKey, {
+        representative,
+        high: temperatures.high,
+        low: temperatures.low,
+        precipitationChance: entry.pop,
+        timestampMs,
+      })
+      continue
+    }
+
+    existing.representative = resolveRepresentativeForecastEntry(existing.representative, representative)
+    existing.high = Math.max(existing.high, temperatures.high)
+    existing.low = Math.min(existing.low, temperatures.low)
+    existing.precipitationChance = Math.max(existing.precipitationChance ?? 0, entry.pop ?? 0)
+  }
+
+  const dailyForecast: WeatherDashboardForecastDay[] = Array.from(dailyBuckets.entries())
     .slice(0, WEATHER_DASHBOARD_DAILY_LIMIT)
-    .map((day) => {
-      const condition = day.weather[0]
+    .map(([dateKey, bucket]) => {
+      const condition = bucket.representative.entry.weather[0]
       if (!condition) {
         throw new WeatherGatewayError('invalid-response', 'Daily weather row did not include a weather condition.')
       }
 
-      const timestampMs = day.dt * 1000
-      const parsedDate = new Date(timestampMs)
-      const dateKey = Number.isNaN(parsedDate.valueOf()) ? String(day.dt) : toDateKey(timestampMs)
-      const dayLabel = Number.isNaN(parsedDate.valueOf()) ? dateKey : dayFormatter.format(parsedDate)
-
       return {
         dateKey,
-        dayLabel,
-        high: day.temp.max,
-        low: day.temp.min,
+        dayLabel: dayFormatter.format(toOffsetTimestampMs(bucket.timestampMs, timezoneOffsetSeconds)),
+        high: bucket.high,
+        low: bucket.low,
         weatherCode: condition.id,
         conditionLabel: normalizeWeatherConditionLabel(condition.id, condition.description),
-        precipitationChance: toPercent(day.pop),
+        precipitationChance: toPercent(bucket.precipitationChance),
       }
     })
 
-  const alerts: WeatherDashboardAlert[] = (forecast.alerts ?? [])
-    .slice(0, WEATHER_DASHBOARD_ALERT_LIMIT)
-    .map((alert) => ({
-      source: alert.sender_name,
-      event: alert.event,
-      startsAt: alert.start * 1000,
-      endsAt: typeof alert.end === 'number' ? alert.end * 1000 : undefined,
-      description: alert.description,
-      tags: alert.tags ?? [],
-    }))
-
   return {
-    timezone: forecast.timezone,
+    timezone,
     current,
     hourly: hourlyForecast,
     daily: dailyForecast,
-    alerts,
+    alerts: [],
   }
 }
 
@@ -524,16 +611,28 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
         return ChatBridgeWeatherDashboardResultSchema.parse({ snapshot })
       }
 
-      const forecastSearch = new URL(OPENWEATHER_ONE_CALL_URL)
+      const currentSearch = new URL(OPENWEATHER_CURRENT_WEATHER_URL)
+      currentSearch.searchParams.set('lat', String(resolvedLocation.latitude))
+      currentSearch.searchParams.set('lon', String(resolvedLocation.longitude))
+      currentSearch.searchParams.set('appid', apiKey)
+      currentSearch.searchParams.set('units', units)
+      currentSearch.searchParams.set('lang', 'en')
+
+      const forecastSearch = new URL(OPENWEATHER_FORECAST_URL)
       forecastSearch.searchParams.set('lat', String(resolvedLocation.latitude))
       forecastSearch.searchParams.set('lon', String(resolvedLocation.longitude))
       forecastSearch.searchParams.set('appid', apiKey)
       forecastSearch.searchParams.set('units', units)
       forecastSearch.searchParams.set('lang', 'en')
-      forecastSearch.searchParams.set('exclude', 'minutely')
 
-      const forecastPayload = await fetchJson(fetchImpl, forecastSearch.toString())
-      const normalizedWeather = normalizeForecastSnapshot(forecastPayload)
+      const [currentPayload, forecastPayload] = await Promise.all([
+        fetchJson(fetchImpl, currentSearch.toString()),
+        fetchJson(fetchImpl, forecastSearch.toString()),
+      ])
+      const normalizedWeather = normalizeForecastSnapshot({
+        current: currentPayload,
+        forecast: forecastPayload,
+      })
       const fetchedAt = now()
 
       const snapshot = createWeatherDashboardReadySnapshot({
