@@ -2,6 +2,7 @@ import type { Message, MessageAppPart } from '../types/session'
 import { ChatBridgeCompletionPayloadSchema } from './completion'
 import { getChatBridgeDebateArenaState, getChatBridgeDebateArenaSummaryForModel } from './debate-arena'
 import { normalizeChatBridgeCompletionSummaryForModel } from './summary'
+import { ChessAppSnapshotSchema, getChessSummary } from './apps/chess'
 import {
   buildChatBridgeAppStateDigest,
   describeChatBridgeAppScreenshot,
@@ -60,6 +61,11 @@ export function getChatBridgeAppSummaryForModel(part: MessageAppPart): string | 
   const summaryForModel = part.summaryForModel?.trim()
   if (summaryForModel) {
     return summaryForModel
+  }
+
+  const chessSnapshot = ChessAppSnapshotSchema.safeParse(part.snapshot)
+  if (chessSnapshot.success) {
+    return getChessSummary(chessSnapshot.data)
   }
 
   const completionPayload = part.values?.chatbridgeCompletion

@@ -147,6 +147,10 @@ describe('ChatBridge mid-game board context regression coverage', () => {
 
         const systemPrompt = getInjectedSystemPrompt(result.coreMessages)
 
+        expect(systemPrompt).toContain('ChatBridge primary app continuity context (host-owned and normalized):')
+        expect(systemPrompt).toContain('Summary: Chess board ready after e5. White to move.')
+        expect(systemPrompt).toContain('State digest')
+        expect(systemPrompt).toContain('Recent moves: e4, e5')
         expect(systemPrompt).toContain('Context state: live')
         expect(systemPrompt).toContain(`Board FEN: ${snapshot.fen}`)
         expect(systemPrompt).toContain('Side to move: white')

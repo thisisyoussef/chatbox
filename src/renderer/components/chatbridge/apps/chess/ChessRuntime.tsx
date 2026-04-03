@@ -122,6 +122,7 @@ function buildLegacyPartFromSnapshot(part: MessageAppPart, snapshot: ChatBridgeC
   const description =
     part.description ??
     'Moves validate inside the board first, then emit a structured host update for the same conversation block.'
+  const summaryForModel = snapshot.boardContext.summary
 
   return {
     ...part,
@@ -129,6 +130,7 @@ function buildLegacyPartFromSnapshot(part: MessageAppPart, snapshot: ChatBridgeC
     title: part.title ?? 'Chess runtime',
     description,
     summary: snapshot.boardContext.summary,
+    ...(summaryForModel ? { summaryForModel } : {}),
     statusText,
     snapshot,
   }

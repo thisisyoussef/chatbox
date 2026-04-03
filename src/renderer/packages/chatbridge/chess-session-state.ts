@@ -103,12 +103,15 @@ function updateSessionMessageAppPart(
 }
 
 export function buildChessMessageAppPart(part: MessageAppPart, snapshot: ChessAppSnapshot): MessageAppPart {
+  const summaryForModel = getChessSummary(snapshot)
+
   return {
     ...part,
     appId: part.appId || 'chess',
     appName: part.appName || CHESS_APP_NAME,
     lifecycle: 'active',
-    summary: getChessSummary(snapshot),
+    summary: summaryForModel,
+    summaryForModel,
     title: 'Chess board',
     description: getChessDescription(snapshot),
     statusText: getChessStatusLabel(snapshot),

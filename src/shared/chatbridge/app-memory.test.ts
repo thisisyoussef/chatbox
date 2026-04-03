@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { Chess } from 'chess.js'
 import type { Message, MessageAppPart } from '../types/session'
 import {
   buildChatBridgeSelectedAppContextPrompt,
   selectChatBridgeAppContext,
   selectChatBridgeAppContexts,
 } from './app-memory'
+import { createChessAppSnapshotFromGame } from './apps/chess'
 import { createDrawingKitAppSnapshot } from './apps/drawing-kit'
 
 function createAppPart(overrides: Partial<MessageAppPart> = {}): MessageAppPart {
@@ -236,5 +238,51 @@ describe('selectChatBridgeAppContexts', () => {
     expect(prompt).toContain('Drawing Kit')
     expect(prompt).toContain('Prompt: Draw a comet sandwich.')
     expect(prompt).toContain('Screenshot: Comet sandwich on the sticky-note canvas.')
+  })
+
+  it('derives host-approved chess continuity from a validated snapshot when summaryForModel is missing', () => {
+    const game = new Chess()
+    game.move('e4')
+    game.move('e5')
+    game.move('Qh5')
+    game.move('Qe7')
+    const snapshot = createChessAppSnapshotFromGame(game)
+
+    const messages: Message[] = [
+      {
+        id: 'chess-active',
+        role: 'assistant',
+        contentParts: [
+          {
+            type: 'app',
+            appId: 'chess',
+            appName: 'Chess',
+            appInstanceId: 'chess-instance-1',
+            lifecycle: 'active',
+            summary: 'Raw chess summary should not be the only continuity source.',
+            snapshot,
+          },
+        ],
+      },
+    ]
+
+    const contexts = selectChatBridgeAppContexts(messages)
+
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0]).toMatchObject({
+      appId: 'chess',
+      appInstanceId: 'chess-instance-1',
+      lifecycle: 'active',
+      summaryForModel: 'Chess board ready after Qe7. White to move.',
+      stateDigest: {
+        kind: 'chess',
+      },
+    })
+
+    const prompt = buildChatBridgeSelectedAppContextPrompt(messages)
+
+    expect(prompt).toContain('ChatBridge primary app continuity context')
+    expect(prompt).toContain('Summary: Chess board ready after Qe7. White to move.')
+    expect(prompt).toContain('Recent moves: e4, e5, Qh5, Qe7')
   })
 })
