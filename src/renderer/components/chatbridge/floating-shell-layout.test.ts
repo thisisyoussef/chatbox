@@ -1,7 +1,8 @@
+import { DRAWING_KIT_APP_ID } from '@shared/chatbridge/apps/drawing-kit'
 import { describe, expect, it } from 'vitest'
 import {
-  FLOATING_SHELL_MARGIN,
   clampFloatingShellFrame,
+  FLOATING_SHELL_MARGIN,
   getDefaultFloatingShellFrame,
   getExpandedFloatingShellFrame,
   getMinimizedFloatingShellFrame,
@@ -70,6 +71,35 @@ describe('floating shell layout', () => {
       x: 176,
       y: 136,
       width: 760,
+      height: 560,
+    })
+  })
+
+  it('uses a larger default frame for Drawing Kit so the board is usable without immediate resizing', () => {
+    expect(getDefaultFloatingShellFrame(viewport, DRAWING_KIT_APP_ID)).toEqual({
+      x: 216,
+      y: 76,
+      width: 720,
+      height: 620,
+    })
+  })
+
+  it('clamps persisted Drawing Kit frames back to a usable minimum size', () => {
+    expect(
+      clampFloatingShellFrame(
+        {
+          x: 640,
+          y: 400,
+          width: 420,
+          height: 320,
+        },
+        viewport,
+        DRAWING_KIT_APP_ID
+      )
+    ).toEqual({
+      x: 376,
+      y: 136,
+      width: 560,
       height: 560,
     })
   })

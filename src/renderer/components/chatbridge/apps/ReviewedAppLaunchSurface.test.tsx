@@ -5,14 +5,15 @@
 process.env.CHATBOX_BUILD_PLATFORM = 'web'
 
 import { MantineProvider } from '@mantine/core'
-import { fireEvent, render, waitFor } from '@testing-library/react'
-import type { BridgeReadyEvent } from '@shared/chatbridge/bridge-session'
 import {
   clearChatBridgeObservabilityState,
   createWeatherDashboardDegradedSnapshot,
   listChatBridgeObservabilityEvents,
 } from '@shared/chatbridge'
+import { createDrawingKitAppSnapshot } from '@shared/chatbridge/apps/drawing-kit'
+import type { BridgeReadyEvent } from '@shared/chatbridge/bridge-session'
 import type { MessageAppPart, Session } from '@shared/types'
+import { fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   applyReviewedAppLaunchBootstrapToSession,
@@ -36,6 +37,7 @@ const mocks = vi.hoisted(() => {
     attach: vi.fn(),
     waitForReady: vi.fn(async () => undefined),
     renderHtml: vi.fn(),
+    syncContext: vi.fn(),
     getSession: vi.fn(() => ({
       envelope: {
         bridgeSessionId: 'bridge-session-reviewed-1',
@@ -51,7 +53,7 @@ const mocks = vi.hoisted(() => {
       runId: 'launch-trace-reviewed-1',
       end: vi.fn(async () => undefined),
     })),
-    updateSessionWithMessages: vi.fn(async () => {
+    updateSessionWithMessages: vi.fn(() => {
       const baseSession: Session = {
         id: 'session-reviewed-launch-1',
         name: 'Reviewed launch session',
@@ -202,7 +204,8 @@ function createWeatherReviewedLaunchPart(): MessageAppPart {
     description: 'The host is launching Weather Dashboard through the reviewed runtime.',
     statusText: 'Launching',
     fallbackTitle: 'Weather Dashboard fallback',
-    fallbackText: 'The host will keep Weather Dashboard launch and recovery in this thread if live weather cannot load.',
+    fallbackText:
+      'The host will keep Weather Dashboard launch and recovery in this thread if live weather cannot load.',
     values: {
       chatbridgeReviewedAppLaunch: {
         schemaVersion: 1,
@@ -214,6 +217,38 @@ function createWeatherReviewedLaunchPart(): MessageAppPart {
         summary: 'Prepared the reviewed Weather Dashboard request for the host-owned launch path.',
         request: 'Open Weather Dashboard for Chicago and show the forecast.',
         location: 'Chicago',
+      },
+    },
+  }
+}
+
+function createDrawingKitReviewedLaunchPart(snapshot = createDrawingKitAppSnapshot()): MessageAppPart {
+  return {
+    type: 'app',
+    appId: 'drawing-kit',
+    appName: 'Drawing Kit',
+    appInstanceId: 'reviewed-launch:tool-reviewed-launch-drawing-kit-1',
+    lifecycle: 'launching',
+    toolCallId: 'tool-reviewed-launch-drawing-kit-1',
+    summary: 'Prepared the reviewed Drawing Kit request for the host-owned launch path.',
+    summaryForModel: 'Prepared the reviewed Drawing Kit request for the host-owned launch path.',
+    title: 'Drawing Kit launch',
+    description: 'The host is launching Drawing Kit through the reviewed bridge runtime.',
+    statusText: 'Launching',
+    fallbackTitle: 'Drawing Kit fallback',
+    fallbackText:
+      'The host will keep Drawing Kit launch and recovery in this thread if the runtime cannot finish starting.',
+    snapshot,
+    values: {
+      chatbridgeReviewedAppLaunch: {
+        schemaVersion: 1,
+        appId: 'drawing-kit',
+        appName: 'Drawing Kit',
+        appVersion: '0.1.0',
+        toolName: 'drawing_kit_open',
+        capability: 'open',
+        summary: 'Prepared the reviewed Drawing Kit request for the host-owned launch path.',
+        request: 'Open Drawing Kit and start a sticky-note doodle dare.',
       },
     },
   }
@@ -238,13 +273,15 @@ function getWeatherLaunchPart(session: Session): MessageAppPart {
   return launchPart
 }
 
-function createActiveWeatherSession(snapshot = createWeatherSnapshot({
-  locationQuery: 'Chicago',
-  locationName: 'Chicago, Illinois, United States',
-  headline: '72°F and Mostly clear',
-  conditionLabel: 'Mostly clear',
-  temperature: 72,
-})) {
+function createActiveWeatherSession(
+  snapshot = createWeatherSnapshot({
+    locationQuery: 'Chicago',
+    locationName: 'Chicago, Illinois, United States',
+    headline: '72°F and Mostly clear',
+    conditionLabel: 'Mostly clear',
+    temperature: 72,
+  })
+) {
   const part = createWeatherReviewedLaunchPart()
   const baseSession: Session = {
     id: 'session-reviewed-launch-weather-1',
@@ -313,7 +350,7 @@ describe('ReviewedAppLaunchSurface', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     clearChatBridgeObservabilityState()
-    mocks.invoke.mockImplementation(async (channel: string, query?: { location?: string; refresh?: boolean }) => {
+    mocks.invoke.mockImplementation((channel: string, query?: { location?: string; refresh?: boolean }) => {
       if (channel !== 'chatbridge-weather:get-dashboard') {
         throw new Error(`Unexpected channel: ${channel}`)
       }
@@ -467,6 +504,107 @@ describe('ReviewedAppLaunchSurface', () => {
       )
     })
     expect(mocks.createBridgeHostController).not.toHaveBeenCalled()
+  })
+
+  it('keeps the Drawing Kit iframe stable while syncing later host snapshots', async () => {
+    const initialSnapshot = createDrawingKitAppSnapshot({
+      status: 'drawing',
+      strokeCount: 1,
+      lastUpdatedAt: 111,
+      previewMarks: [
+        {
+          kind: 'line',
+          tool: 'brush',
+          color: '#267df0',
+          width: 5,
+          points: [
+            { x: 0.2, y: 0.25 },
+            { x: 0.48, y: 0.52 },
+          ],
+        },
+      ],
+    })
+    const updatedSnapshot = createDrawingKitAppSnapshot({
+      status: 'drawing',
+      strokeCount: 2,
+      lastUpdatedAt: 222,
+      previewMarks: [
+        {
+          kind: 'line',
+          tool: 'brush',
+          color: '#267df0',
+          width: 5,
+          points: [
+            { x: 0.2, y: 0.25 },
+            { x: 0.48, y: 0.52 },
+          ],
+        },
+        {
+          kind: 'line',
+          tool: 'brush',
+          color: '#267df0',
+          width: 5,
+          points: [
+            { x: 0.56, y: 0.32 },
+            { x: 0.72, y: 0.58 },
+          ],
+        },
+      ],
+    })
+    const part = createDrawingKitReviewedLaunchPart(initialSnapshot)
+    const { container, rerender } = render(
+      <MantineProvider>
+        <ReviewedAppLaunchSurface
+          part={part}
+          sessionId="session-reviewed-launch-drawing-kit-1"
+          messageId="assistant-reviewed-launch-drawing-kit-1"
+        />
+      </MantineProvider>
+    )
+
+    const iframe = container.querySelector('iframe')
+    expect(iframe).toBeTruthy()
+    if (!iframe) {
+      return
+    }
+
+    const initialSrcdoc = iframe.getAttribute('srcdoc')
+    Object.defineProperty(iframe, 'contentWindow', {
+      value: window,
+      configurable: true,
+    })
+
+    if (mocks.createBridgeHostController.mock.calls.length === 0) {
+      fireEvent.load(iframe)
+    }
+
+    await waitFor(() => {
+      expect(mocks.createBridgeHostController).toHaveBeenCalled()
+    })
+
+    expect(mocks.controller.syncContext).toHaveBeenCalledWith(initialSnapshot)
+    mocks.controller.syncContext.mockClear()
+    const initialControllerCalls = mocks.createBridgeHostController.mock.calls.length
+
+    rerender(
+      <MantineProvider>
+        <ReviewedAppLaunchSurface
+          part={{
+            ...part,
+            snapshot: updatedSnapshot,
+          }}
+          sessionId="session-reviewed-launch-drawing-kit-1"
+          messageId="assistant-reviewed-launch-drawing-kit-1"
+        />
+      </MantineProvider>
+    )
+
+    await waitFor(() => {
+      expect(mocks.controller.syncContext).toHaveBeenCalledWith(updatedSnapshot)
+    })
+
+    expect(mocks.createBridgeHostController.mock.calls.length).toBe(initialControllerCalls)
+    expect(iframe.getAttribute('srcdoc')).toBe(initialSrcdoc)
   })
 
   it('keeps the latest selected location active for later refreshes', async () => {
@@ -666,7 +804,10 @@ describe('ReviewedAppLaunchSurface', () => {
       return
     }
 
-    const [persistedSessionId, updater] = lastCall as unknown as [string, (session: Session) => Promise<Session> | Session]
+    const [persistedSessionId, updater] = lastCall as unknown as [
+      string,
+      (session: Session) => Promise<Session> | Session,
+    ]
     expect(persistedSessionId).toBe('session-reviewed-launch-weather-1')
     expect(typeof updater).toBe('function')
 

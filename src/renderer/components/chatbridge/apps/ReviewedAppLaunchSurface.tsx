@@ -1,16 +1,17 @@
+import {
+  type BridgeAppEvent,
+  type BridgeReadyEvent,
+  createChatBridgeRuntimeCrashRecoveryContract,
+  DRAWING_KIT_APP_ID,
+  WEATHER_DASHBOARD_APP_ID,
+} from '@shared/chatbridge'
 import { CHATBRIDGE_LANGSMITH_PROJECT_NAME } from '@shared/models/tracing'
-import { DRAWING_KIT_APP_ID, WEATHER_DASHBOARD_APP_ID } from '@shared/chatbridge'
-import type { LangSmithRunHandle } from '@shared/utils/langsmith_adapter'
 import type { MessageAppPart } from '@shared/types'
-import { useEffect, useMemo, useRef } from 'react'
+import type { LangSmithRunHandle } from '@shared/utils/langsmith_adapter'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { langsmith } from '@/adapters/langsmith'
 import { createBridgeHostController } from '@/packages/chatbridge/bridge/host-controller'
 import { createReviewedAppLaunchRuntimeMarkup } from '@/packages/chatbridge/bridge/reviewed-app-runtime'
-import {
-  createChatBridgeRuntimeCrashRecoveryContract,
-  type BridgeAppEvent,
-  type BridgeReadyEvent,
-} from '@shared/chatbridge'
 import {
   persistReviewedAppLaunchBootstrap,
   persistReviewedAppLaunchBridgeEvent,
@@ -26,22 +27,32 @@ interface ReviewedAppLaunchSurfaceProps {
   messageId?: string
 }
 
+function readSnapshotRecord(snapshot: unknown) {
+  return snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
+    ? (snapshot as Record<string, unknown>)
+    : null
+}
+
 export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: ReviewedAppLaunchSurfaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const controllerRef = useRef<ReturnType<typeof createBridgeHostController> | null>(null)
   const launchRunRef = useRef<LangSmithRunHandle | null>(null)
   const launchRunFinishedRef = useRef(false)
   const persistenceQueueRef = useRef(Promise.resolve())
+  const runtimeMarkupRef = useRef<{ appInstanceId: string; markup: string | null } | null>(null)
   const launch = readChatBridgeReviewedAppLaunch(part.values)
+  const snapshot = readSnapshotRecord(part.snapshot)
+  const isDrawingKit = part.appId === DRAWING_KIT_APP_ID
   const isWeatherDashboard = part.appId === WEATHER_DASHBOARD_APP_ID
 
-  const runtimeMarkup = useMemo(() => {
-    if (!launch || isWeatherDashboard) {
-      return null
+  if (!runtimeMarkupRef.current || runtimeMarkupRef.current.appInstanceId !== part.appInstanceId) {
+    runtimeMarkupRef.current = {
+      appInstanceId: part.appInstanceId,
+      markup: !launch || isWeatherDashboard ? null : createReviewedAppLaunchRuntimeMarkup(launch, part.snapshot),
     }
+  }
 
-    return createReviewedAppLaunchRuntimeMarkup(launch, part.snapshot)
-  }, [isWeatherDashboard, launch, part.snapshot])
+  const runtimeMarkup = runtimeMarkupRef.current?.markup ?? null
 
   const expectedOrigin = useMemo(() => window.location.origin || 'null', [])
   const bootstrapTargetOrigin = '*'
@@ -57,7 +68,7 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
     return persistenceQueueRef.current
   }
 
-  async function finishLaunchRun(result?: Parameters<LangSmithRunHandle['end']>[0]) {
+  const finishLaunchRun = useCallback(async (result?: Parameters<LangSmithRunHandle['end']>[0]) => {
     if (!launchRunRef.current || launchRunFinishedRef.current) {
       return
     }
@@ -66,7 +77,7 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
     const activeRun = launchRunRef.current
     launchRunRef.current = null
     await activeRun.end(result)
-  }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -79,24 +90,15 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
         },
       })
     }
-  }, [part.appInstanceId])
+  }, [finishLaunchRun, part.appInstanceId])
 
   useEffect(() => {
-    if (part.appId !== DRAWING_KIT_APP_ID) {
-      return
-    }
-
-    const snapshot =
-      part.snapshot && typeof part.snapshot === 'object' && !Array.isArray(part.snapshot)
-        ? (part.snapshot as Record<string, unknown>)
-        : null
-
-    if (!snapshot) {
+    if (!isDrawingKit || !snapshot) {
       return
     }
 
     controllerRef.current?.syncContext(snapshot)
-  }, [part.appId, part.snapshot])
+  }, [isDrawingKit, snapshot])
 
   if (!launch || part.lifecycle === 'error' || part.lifecycle === 'stale' || part.lifecycle === 'complete') {
     return null
@@ -258,6 +260,10 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
         },
       })
 
+      if (snapshot) {
+        controller.syncContext(snapshot)
+      }
+
       await persistBootstrap(controller.getSession().envelope.bridgeSessionId)
       controller.attach(targetWindow as unknown as Parameters<typeof controller.attach>[0])
       controllerRef.current = controller
@@ -276,7 +282,10 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
       srcDoc={runtimeMarkup}
       title={`${launch.appName} reviewed app runtime`}
       sandbox="allow-scripts allow-forms"
-      className="w-full min-h-[260px] border-none"
+      className="w-full border-none"
+      style={{
+        minHeight: isDrawingKit ? 620 : 260,
+      }}
       onLoad={handleLoad}
     />
   )

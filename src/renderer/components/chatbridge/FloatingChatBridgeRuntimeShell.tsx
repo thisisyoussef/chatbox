@@ -8,8 +8,8 @@ import {
   IconGripHorizontal,
   IconPictureInPictureOn,
 } from '@tabler/icons-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import { cn } from '@/lib/utils'
@@ -46,14 +46,12 @@ interface OverlayViewport {
   height: number
 }
 
-type OverlayInteraction =
-  | {
-      type: 'move' | 'resize'
-      startFrame: FloatingShellFrame
-      startX: number
-      startY: number
-    }
-  | null
+type OverlayInteraction = {
+  type: 'move' | 'resize'
+  startFrame: FloatingShellFrame
+  startX: number
+  startY: number
+} | null
 
 function getViewportSize(viewportElement: HTMLElement | null): OverlayViewport {
   if (viewportElement) {
@@ -133,16 +131,16 @@ export function FloatingChatBridgeRuntimeShell({
       return null
     }
 
-    return clampFloatingShellFrame(frame ?? getDefaultFloatingShellFrame(viewport), viewport)
-  }, [frame, viewport])
+    return clampFloatingShellFrame(frame ?? getDefaultFloatingShellFrame(viewport, part.appId), viewport, part.appId)
+  }, [frame, part.appId, viewport])
 
   const expandedFrame = useMemo(() => {
     if (viewport.width <= 0 || viewport.height <= 0) {
       return null
     }
 
-    return getExpandedFloatingShellFrame(viewport)
-  }, [viewport])
+    return getExpandedFloatingShellFrame(viewport, part.appId)
+  }, [part.appId, viewport])
 
   const minimizedFrame = useMemo(() => {
     const currentDesktopFrame = expanded ? expandedFrame : baseFrame
@@ -151,8 +149,8 @@ export function FloatingChatBridgeRuntimeShell({
       return null
     }
 
-    return getMinimizedFloatingShellFrame(currentDesktopFrame, viewport)
-  }, [baseFrame, expanded, expandedFrame, viewport])
+    return getMinimizedFloatingShellFrame(currentDesktopFrame, viewport, part.appId)
+  }, [baseFrame, expanded, expandedFrame, part.appId, viewport])
 
   useEffect(() => {
     baseFrameRef.current = baseFrame
@@ -187,8 +185,8 @@ export function FloatingChatBridgeRuntimeShell({
       const deltaY = event.clientY - currentInteraction.startY
       const nextFrame =
         currentInteraction.type === 'move'
-          ? moveFloatingShellFrame(currentInteraction.startFrame, viewport, deltaX, deltaY)
-          : resizeFloatingShellFrame(currentInteraction.startFrame, viewport, deltaX, deltaY)
+          ? moveFloatingShellFrame(currentInteraction.startFrame, viewport, deltaX, deltaY, part.appId)
+          : resizeFloatingShellFrame(currentInteraction.startFrame, viewport, deltaX, deltaY, part.appId)
 
       if (!areFloatingShellFramesEqual(currentFrame, nextFrame)) {
         onFrameChange(nextFrame)
@@ -208,7 +206,7 @@ export function FloatingChatBridgeRuntimeShell({
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
     }
-  }, [expanded, isSmallScreen, onFrameChange, stopInteraction, viewport])
+  }, [expanded, isSmallScreen, onFrameChange, part.appId, stopInteraction, viewport])
 
   useEffect(() => {
     return () => {
@@ -268,19 +266,19 @@ export function FloatingChatBridgeRuntimeShell({
 
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
-        onFrameChange(moveFloatingShellFrame(baseFrame, viewport, -step, 0))
+        onFrameChange(moveFloatingShellFrame(baseFrame, viewport, -step, 0, part.appId))
       } else if (event.key === 'ArrowRight') {
         event.preventDefault()
-        onFrameChange(moveFloatingShellFrame(baseFrame, viewport, step, 0))
+        onFrameChange(moveFloatingShellFrame(baseFrame, viewport, step, 0, part.appId))
       } else if (event.key === 'ArrowUp') {
         event.preventDefault()
-        onFrameChange(moveFloatingShellFrame(baseFrame, viewport, 0, -step))
+        onFrameChange(moveFloatingShellFrame(baseFrame, viewport, 0, -step, part.appId))
       } else if (event.key === 'ArrowDown') {
         event.preventDefault()
-        onFrameChange(moveFloatingShellFrame(baseFrame, viewport, 0, step))
+        onFrameChange(moveFloatingShellFrame(baseFrame, viewport, 0, step, part.appId))
       }
     },
-    [baseFrame, expanded, isSmallScreen, onFrameChange, viewport]
+    [baseFrame, expanded, isSmallScreen, onFrameChange, part.appId, viewport]
   )
 
   const handleResizeKeyDown = useCallback(
@@ -293,19 +291,19 @@ export function FloatingChatBridgeRuntimeShell({
 
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
-        onFrameChange(resizeFloatingShellFrame(baseFrame, viewport, -step, 0))
+        onFrameChange(resizeFloatingShellFrame(baseFrame, viewport, -step, 0, part.appId))
       } else if (event.key === 'ArrowRight') {
         event.preventDefault()
-        onFrameChange(resizeFloatingShellFrame(baseFrame, viewport, step, 0))
+        onFrameChange(resizeFloatingShellFrame(baseFrame, viewport, step, 0, part.appId))
       } else if (event.key === 'ArrowUp') {
         event.preventDefault()
-        onFrameChange(resizeFloatingShellFrame(baseFrame, viewport, 0, -step))
+        onFrameChange(resizeFloatingShellFrame(baseFrame, viewport, 0, -step, part.appId))
       } else if (event.key === 'ArrowDown') {
         event.preventDefault()
-        onFrameChange(resizeFloatingShellFrame(baseFrame, viewport, 0, step))
+        onFrameChange(resizeFloatingShellFrame(baseFrame, viewport, 0, step, part.appId))
       }
     },
-    [baseFrame, expanded, isSmallScreen, onFrameChange, viewport]
+    [baseFrame, expanded, isSmallScreen, onFrameChange, part.appId, viewport]
   )
 
   const handleHeaderPointerDown = useCallback(
@@ -378,7 +376,12 @@ export function FloatingChatBridgeRuntimeShell({
                 >
                   Source
                 </Button>
-                <ActionIcon variant="subtle" size="lg" aria-label="Minimize overlay" onClick={() => onMinimizeChange(true)}>
+                <ActionIcon
+                  variant="subtle"
+                  size="lg"
+                  aria-label="Minimize overlay"
+                  onClick={() => onMinimizeChange(true)}
+                >
                   <IconPictureInPictureOn size={18} />
                 </ActionIcon>
               </div>
