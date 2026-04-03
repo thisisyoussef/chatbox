@@ -40,75 +40,70 @@ function createTraceAdapter() {
   }
 }
 
-function createHourlyForecast() {
-  return Array.from({ length: 9 }, (_value, index) => ({
-    dt: 1_717_000_000 + index * 3_600,
-    temp: 70 + index,
-    pop: index === 0 ? 0.1 : 0.2,
-    weather: [
-      {
-        id: index === 0 ? 800 : 801,
-        description: index === 0 ? 'clear sky' : 'few clouds',
-      },
-    ],
-  }))
+function createCurrentWeather(overrides: Record<string, unknown> = {}) {
+  return {
+    timezone: -18_000,
+    main: {
+      temp: 72.2,
+      feels_like: 70.6,
+    },
+    wind: {
+      speed: 9.1,
+    },
+    weather: [{ id: 800, description: 'clear sky' }],
+    ...overrides,
+  }
 }
 
-function createDailyForecast() {
-  return Array.from({ length: 7 }, (_value, index) => ({
-    dt: 1_717_000_000 + index * 86_400,
-    temp: {
-      min: 55 + index,
-      max: 72 + index,
-    },
-    pop: index === 0 ? 0.1 : 0.25,
-    weather: [
-      {
-        id: index === 0 ? 800 : 500,
-        description: index === 0 ? 'clear sky' : 'light rain',
+function createForecastList(
+  options: {
+    count?: number
+    timezoneOffsetSeconds?: number
+  } = {}
+) {
+  const count = options.count ?? 48
+  const timezoneOffsetSeconds = options.timezoneOffsetSeconds ?? -18_000
+  const startsAt = Date.parse('2024-06-01T00:00:00Z') / 1000
+
+  return Array.from({ length: count }, (_value, index) => {
+    const temperature = 68 + index * 0.5
+    const rainyPoint = index % 8 === 0
+
+    return {
+      dt: startsAt + index * 10_800,
+      main: {
+        temp: temperature,
+        temp_min: temperature - 2,
+        temp_max: temperature + 2,
       },
-    ],
-  }))
+      pop: rainyPoint ? 0.35 : 0.1,
+      weather: [
+        {
+          id: rainyPoint ? 500 : 801,
+          description: rainyPoint ? 'light rain' : 'few clouds',
+        },
+      ],
+      timezoneOffsetSeconds,
+    }
+  })
 }
 
-function createAlerts() {
-  return [
-    {
-      sender_name: 'National Weather Service',
-      event: 'Heat Advisory',
-      start: 1_717_000_000,
-      end: 1_717_003_600,
-      description: 'Hot conditions are expected through the afternoon.',
-      tags: ['Extreme temperature value'],
+function createForecastResponse(
+  options: {
+    count?: number
+    timezoneOffsetSeconds?: number
+  } = {}
+) {
+  return {
+    list: createForecastList(options),
+    city: {
+      timezone: options.timezoneOffsetSeconds ?? -18_000,
     },
-    {
-      sender_name: 'Cook County Alerts',
-      event: 'Air Quality Alert',
-      start: 1_717_007_200,
-      end: 1_717_010_800,
-      description: 'Sensitive groups should limit outdoor activity.',
-      tags: ['Air quality'],
-    },
-    {
-      sender_name: 'Illinois Emergency Management',
-      event: 'Beach Hazards Statement',
-      start: 1_717_014_400,
-      end: 1_717_018_000,
-      description: 'Dangerous currents expected along the lakefront.',
-      tags: ['Marine weather statement'],
-    },
-    {
-      sender_name: 'Overflow Alerting',
-      event: 'Should Be Trimmed',
-      start: 1_717_021_600,
-      description: 'This alert should not appear because only three alerts are kept.',
-      tags: ['Overflow'],
-    },
-  ]
+  }
 }
 
 describe('chatbridge weather service', () => {
-  it('normalizes OpenWeather geocoding and One Call data into a ready dashboard snapshot', async () => {
+  it('normalizes OpenWeather geocoding, current weather, and forecast data into a ready dashboard snapshot', async () => {
     const { adapter, events } = createTraceAdapter()
     const requestedUrls: string[] = []
     const fetchMock = vi.fn(async (url: string) => {
@@ -127,19 +122,11 @@ describe('chatbridge weather service', () => {
         ])
       }
 
-      return jsonResponse({
-        timezone: 'America/Chicago',
-        current: {
-          dt: 1_717_000_000,
-          temp: 72.2,
-          feels_like: 70.6,
-          wind_speed: 9.1,
-          weather: [{ id: 800, description: 'clear sky' }],
-        },
-        hourly: createHourlyForecast(),
-        daily: createDailyForecast(),
-        alerts: createAlerts(),
-      })
+      if (requestUrl.pathname === '/data/2.5/weather') {
+        return jsonResponse(createCurrentWeather())
+      }
+
+      return jsonResponse(createForecastResponse())
     })
 
     const service = createChatBridgeWeatherService({
@@ -156,7 +143,7 @@ describe('chatbridge weather service', () => {
     expect(result.snapshot).toMatchObject({
       status: 'ready',
       locationName: 'Chicago, Illinois, United States',
-      timezone: 'America/Chicago',
+      timezone: '-05:00',
       cacheStatus: 'miss',
       fetchedAt: 1_717_000_000_000,
       staleAt: 1_717_000_600_000,
@@ -167,11 +154,11 @@ describe('chatbridge weather service', () => {
     expect(result.snapshot.hourly).toHaveLength(8)
     expect(result.snapshot.daily).toHaveLength(6)
     expect(result.snapshot.forecast).toHaveLength(4)
-    expect(result.snapshot.alerts).toHaveLength(3)
+    expect(result.snapshot.alerts).toHaveLength(0)
     expect(result.snapshot.summary).toContain('Next 8 hours:')
     expect(result.snapshot.summary).toContain('Next 4 days:')
-    expect(result.snapshot.summary).toContain('Active alerts:')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.snapshot.summary).toContain('No active weather alerts.')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(events.map((event) => event.name)).toEqual([
       'chatbridge.weather.fetch.started',
       'chatbridge.weather.fetch.succeeded',
@@ -179,18 +166,23 @@ describe('chatbridge weather service', () => {
     expect(events.at(-1)?.outputs).toMatchObject({
       forecastDays: 6,
       hourlyPoints: 8,
-      alertCount: 3,
+      alertCount: 0,
       status: 'ready',
     })
-    expect(requestedUrls).toHaveLength(2)
+    expect(requestedUrls).toHaveLength(3)
     expect(requestedUrls[0]).toContain('/geo/1.0/direct?q=Chicago&limit=1&appid=test-key')
-    expect(requestedUrls[1]).toContain('/data/3.0/onecall?')
+    expect(requestedUrls[1]).toContain('/data/2.5/weather?')
     expect(requestedUrls[1]).toContain('lat=41.8756')
     expect(requestedUrls[1]).toContain('lon=-87.6244')
     expect(requestedUrls[1]).toContain('appid=test-key')
     expect(requestedUrls[1]).toContain('units=imperial')
     expect(requestedUrls[1]).toContain('lang=en')
-    expect(requestedUrls[1]).toContain('exclude=minutely')
+    expect(requestedUrls[2]).toContain('/data/2.5/forecast?')
+    expect(requestedUrls[2]).toContain('lat=41.8756')
+    expect(requestedUrls[2]).toContain('lon=-87.6244')
+    expect(requestedUrls[2]).toContain('appid=test-key')
+    expect(requestedUrls[2]).toContain('units=imperial')
+    expect(requestedUrls[2]).toContain('lang=en')
   })
 
   it('returns a cache hit on repeated requests without a second upstream fetch', async () => {
@@ -210,18 +202,15 @@ describe('chatbridge weather service', () => {
         ])
       }
 
-      return jsonResponse({
-        timezone: 'America/Chicago',
-        current: {
-          dt: 1_717_000_000,
-          temp: 72.2,
-          feels_like: 70.6,
-          wind_speed: 9.1,
-          weather: [{ id: 801, description: 'few clouds' }],
-        },
-        hourly: createHourlyForecast(),
-        daily: createDailyForecast(),
-      })
+      if (requestUrl.pathname === '/data/2.5/weather') {
+        return jsonResponse(
+          createCurrentWeather({
+            weather: [{ id: 801, description: 'few clouds' }],
+          })
+        )
+      }
+
+      return jsonResponse(createForecastResponse())
     })
 
     const service = createChatBridgeWeatherService({
@@ -241,7 +230,7 @@ describe('chatbridge weather service', () => {
 
     expect(cached.snapshot.cacheStatus).toBe('hit')
     expect(cached.snapshot.statusText).toBe('Using cached weather')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(events.map((event) => event.name)).toEqual([
       'chatbridge.weather.fetch.started',
       'chatbridge.weather.fetch.succeeded',
@@ -264,13 +253,24 @@ describe('chatbridge weather service', () => {
         ])
       }
 
+      if (requestUrl.pathname === '/data/2.5/weather') {
+        return jsonResponse(
+          createCurrentWeather({
+            timezone: 32_400,
+            main: {
+              temp: 18.4,
+              feels_like: 17.9,
+            },
+            weather: [{ id: 804, description: 'overcast clouds' }],
+            wind: undefined,
+          })
+        )
+      }
+
       return jsonResponse({
-        timezone: 'Asia/Tokyo',
-        current: {
-          dt: 1_717_000_000,
-          temp: 18.4,
-          feels_like: 17.9,
-          weather: [{ id: 804, description: 'overcast clouds' }],
+        list: [],
+        city: {
+          timezone: 32_400,
         },
       })
     })
@@ -289,6 +289,7 @@ describe('chatbridge weather service', () => {
     expect(result.snapshot).toMatchObject({
       status: 'ready',
       locationName: 'Tokyo, Japan',
+      timezone: '+09:00',
       units: 'metric',
       hourly: [],
       daily: [],
@@ -302,10 +303,12 @@ describe('chatbridge weather service', () => {
 
   it('falls back to the last good snapshot when a refresh fails upstream', async () => {
     let currentNow = 1_717_000_000_000
-    const fetchMock = vi
-      .fn()
-      .mockImplementationOnce(async () =>
-        jsonResponse([
+    let weatherRequestCount = 0
+    const fetchMock = vi.fn(async (url: string) => {
+      const requestUrl = new URL(url)
+
+      if (requestUrl.pathname === '/geo/1.0/direct') {
+        return jsonResponse([
           {
             name: 'Chicago',
             lat: 41.8756,
@@ -314,36 +317,31 @@ describe('chatbridge weather service', () => {
             country: 'US',
           },
         ])
-      )
-      .mockImplementationOnce(async () =>
-        jsonResponse({
-          timezone: 'America/Chicago',
-          current: {
-            dt: 1_717_000_000,
-            temp: 68,
-            feels_like: 66,
-            wind_speed: 12,
-            weather: [{ id: 804, description: 'overcast clouds' }],
-          },
-          hourly: createHourlyForecast(),
-          daily: createDailyForecast(),
-          alerts: createAlerts().slice(0, 1),
-        })
-      )
-      .mockImplementationOnce(async () =>
-        jsonResponse([
-          {
-            name: 'Chicago',
-            lat: 41.8756,
-            lon: -87.6244,
-            state: 'Illinois',
-            country: 'US',
-          },
-        ])
-      )
-      .mockImplementationOnce(async () => {
+      }
+
+      if (requestUrl.pathname === '/data/2.5/weather') {
+        weatherRequestCount += 1
+
+        if (weatherRequestCount === 1) {
+          return jsonResponse(
+            createCurrentWeather({
+              main: {
+                temp: 68,
+                feels_like: 66,
+              },
+              wind: {
+                speed: 12,
+              },
+              weather: [{ id: 804, description: 'overcast clouds' }],
+            })
+          )
+        }
+
         throw new Error('socket hung up')
-      })
+      }
+
+      return jsonResponse(createForecastResponse())
+    })
 
     const service = createChatBridgeWeatherService({
       fetch: fetchMock as typeof fetch,
@@ -378,10 +376,10 @@ describe('chatbridge weather service', () => {
     })
     expect(degraded.snapshot.hourly).toHaveLength(8)
     expect(degraded.snapshot.daily).toHaveLength(6)
-    expect(degraded.snapshot.alerts).toHaveLength(1)
+    expect(degraded.snapshot.alerts).toHaveLength(0)
     expect(degraded.snapshot.summary).toContain('last good snapshot')
     expect(degraded.snapshot.lastUpdatedLabel).toContain('freshness window passed')
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(fetchMock).toHaveBeenCalledTimes(6)
   })
 
   it('returns an unavailable snapshot when the request has no usable location', async () => {

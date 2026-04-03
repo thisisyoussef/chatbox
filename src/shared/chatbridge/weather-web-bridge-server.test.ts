@@ -73,42 +73,46 @@ describe('weather web bridge server', () => {
         ])
       }
 
-      return jsonResponse({
-        lat: 41.8756,
-        lon: -87.6244,
-        timezone: 'America/Chicago',
-        timezone_offset: -18000,
-        current: {
-          dt: 1_717_000_000,
-          temp: 72.2,
-          feels_like: 70.6,
-          wind_speed: 9.1,
-          humidity: 51,
+      if (requestUrl.pathname === '/data/2.5/weather') {
+        return jsonResponse({
+          timezone: -18_000,
+          main: {
+            temp: 72.2,
+            feels_like: 70.6,
+          },
+          wind: {
+            speed: 9.1,
+          },
           weather: [{ id: 800, description: 'clear sky' }],
-        },
-        hourly: [
+        })
+      }
+
+      return jsonResponse({
+        list: [
           {
             dt: 1_717_003_600,
-            temp: 73.1,
+            main: {
+              temp: 73.1,
+              temp_min: 70.5,
+              temp_max: 74.2,
+            },
             pop: 0.1,
-            humidity: 48,
             weather: [{ id: 801, description: 'few clouds' }],
           },
-        ],
-        daily: [
           {
-            dt: 1_717_086_400,
-            temp: {
-              min: 61.2,
-              max: 78.4,
-              day: 74.1,
+            dt: 1_717_014_400,
+            main: {
+              temp: 75.2,
+              temp_min: 61.2,
+              temp_max: 78.4,
             },
             pop: 0.2,
-            humidity: 46,
             weather: [{ id: 500, description: 'light rain' }],
           },
         ],
-        alerts: [],
+        city: {
+          timezone: -18_000,
+        },
       })
     })
 
@@ -136,7 +140,7 @@ describe('weather web bridge server', () => {
         locationName: 'Chicago, Illinois, United States',
       },
     })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('rejects non-POST requests', async () => {
