@@ -1,18 +1,25 @@
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import {
+  WEATHER_DASHBOARD_ALERT_LIMIT,
+  WEATHER_DASHBOARD_DAILY_LIMIT,
   ChatBridgeWeatherDashboardQuerySchema,
   ChatBridgeWeatherDashboardResultSchema,
+  WEATHER_DASHBOARD_FRESHNESS_MS,
+  WEATHER_DASHBOARD_HOURLY_LIMIT,
   createWeatherDashboardDegradedSnapshot,
   createWeatherDashboardReadySnapshot,
   createWeatherDashboardUnavailableSnapshot,
-  getWeatherConditionLabel,
+  isWeatherDashboardSnapshotStale,
   normalizeWeatherLocationHint,
+  normalizeWeatherConditionLabel,
   resolveWeatherUnits,
   type ChatBridgeWeatherDashboardQuery,
   type ChatBridgeWeatherDashboardResult,
+  type WeatherDashboardAlert,
   type WeatherDashboardCurrentConditions,
   type WeatherDashboardForecastDay,
+  type WeatherDashboardHourlyForecast,
   type WeatherDashboardSnapshot,
 } from '../../../shared/chatbridge/apps/weather-dashboard'
 import { createNoopLangSmithAdapter, type LangSmithAdapter } from '../../../shared/utils/langsmith_adapter'
@@ -24,6 +31,8 @@ type CreateChatBridgeWeatherServiceOptions = {
   fetch?: FetchLike
   now?: () => number
   cacheTtlMs?: number
+  freshnessMs?: number
+  apiKey?: string
   traceAdapter?: LangSmithAdapter
 }
 
@@ -32,59 +41,93 @@ type CachedWeatherSnapshot = {
   expiresAt: number
 }
 
-type OpenMeteoGeocodeResult = {
+type OpenWeatherGeocodeResult = {
   latitude: number
   longitude: number
-  timezone: string
   name: string
   country?: string
-  admin1?: string
+  state?: string
 }
 
-const OPEN_METEO_GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search'
-const OPEN_METEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast'
+const OPENWEATHER_GEOCODE_URL = 'https://api.openweathermap.org/geo/1.0/direct'
+const OPENWEATHER_ONE_CALL_URL = 'https://api.openweathermap.org/data/3.0/onecall'
 const DEFAULT_CACHE_TTL_MS = 10 * 60 * 1000
 const DEFAULT_TIMEOUT_MS = 6_000
 
-const OpenMeteoGeocodeResponseSchema = z
+const OpenWeatherGeocodeResponseSchema = z.array(
+  z
+    .object({
+      lat: z.number(),
+      lon: z.number(),
+      name: z.string().trim().min(1),
+      country: z.string().trim().min(1).optional(),
+      state: z.string().trim().min(1).optional(),
+    })
+    .strict()
+)
+
+const OpenWeatherConditionSchema = z
   .object({
-    results: z
-      .array(
-        z
-          .object({
-            latitude: z.number(),
-            longitude: z.number(),
-            timezone: z.string().trim().min(1),
-            name: z.string().trim().min(1),
-            country: z.string().trim().min(1).optional(),
-            admin1: z.string().trim().min(1).optional(),
-          })
-          .strict()
-      )
-      .optional(),
+    id: z.number().int().nonnegative(),
+    description: z.string().trim().min(1).optional(),
   })
   .strict()
 
-const OpenMeteoForecastResponseSchema = z
+const OpenWeatherOneCallResponseSchema = z
   .object({
     timezone: z.string().trim().min(1),
     current: z
       .object({
-        temperature_2m: z.number(),
-        apparent_temperature: z.number().optional(),
-        weather_code: z.number().int().nonnegative(),
-        wind_speed_10m: z.number().nonnegative().optional(),
+        dt: z.number().int().nonnegative(),
+        temp: z.number(),
+        feels_like: z.number().optional(),
+        wind_speed: z.number().nonnegative().optional(),
+        weather: z.array(OpenWeatherConditionSchema).min(1),
       })
       .strict(),
+    hourly: z
+      .array(
+        z
+          .object({
+            dt: z.number().int().nonnegative(),
+            temp: z.number(),
+            pop: z.number().min(0).max(1).optional(),
+            weather: z.array(OpenWeatherConditionSchema).min(1),
+          })
+          .strict()
+      )
+      .optional(),
     daily: z
-      .object({
-        time: z.array(z.string().trim().min(1)).min(1),
-        weather_code: z.array(z.number().int().nonnegative()).min(1),
-        temperature_2m_max: z.array(z.number()).min(1),
-        temperature_2m_min: z.array(z.number()).min(1),
-        precipitation_probability_max: z.array(z.number().min(0).max(100)).optional(),
-      })
-      .strict(),
+      .array(
+        z
+          .object({
+            dt: z.number().int().nonnegative(),
+            temp: z
+              .object({
+                min: z.number(),
+                max: z.number(),
+              })
+              .strict(),
+            pop: z.number().min(0).max(1).optional(),
+            weather: z.array(OpenWeatherConditionSchema).min(1),
+          })
+          .strict()
+      )
+      .optional(),
+    alerts: z
+      .array(
+        z
+          .object({
+            sender_name: z.string().trim().min(1),
+            event: z.string().trim().min(1),
+            start: z.number().int().nonnegative(),
+            end: z.number().int().nonnegative().optional(),
+            description: z.string().trim().min(1),
+            tags: z.array(z.string().trim().min(1)).optional(),
+          })
+          .strict()
+      )
+      .optional(),
   })
   .strict()
 
@@ -101,8 +144,21 @@ function createCacheKey(location: string, units: ReturnType<typeof resolveWeathe
   return `${units}:${location.trim().toLowerCase()}`
 }
 
-function composeLocationName(location: OpenMeteoGeocodeResult) {
-  return [location.name, location.admin1, location.country].filter(Boolean).join(', ')
+function composeLocationName(location: OpenWeatherGeocodeResult) {
+  return [location.name, location.state, location.country].filter(Boolean).join(', ')
+}
+
+function normalizeCountryName(country?: string) {
+  if (!country) {
+    return undefined
+  }
+
+  try {
+    const displayName = new Intl.DisplayNames(['en'], { type: 'region' }).of(country.toUpperCase())
+    return displayName ?? country
+  } catch {
+    return country
+  }
 }
 
 function createTimeoutSignal(timeoutMs: number) {
@@ -154,68 +210,132 @@ async function fetchJson(fetchImpl: FetchLike, url: string, timeoutMs = DEFAULT_
 }
 
 function normalizeGeocodeResult(payload: unknown) {
-  const parsed = OpenMeteoGeocodeResponseSchema.safeParse(payload)
+  const parsed = OpenWeatherGeocodeResponseSchema.safeParse(payload)
   if (!parsed.success) {
     throw new WeatherGatewayError('invalid-response', 'Weather location lookup returned an invalid response shape.')
   }
 
-  return parsed.data.results?.[0]
+  const result = parsed.data[0]
+  if (!result) {
+    return null
+  }
+
+  return {
+    latitude: result.lat,
+    longitude: result.lon,
+    name: result.name,
+    country: normalizeCountryName(result.country),
+    state: result.state,
+  } satisfies OpenWeatherGeocodeResult
+}
+
+function toPercent(probability?: number) {
+  return typeof probability === 'number' ? Math.round(probability * 100) : undefined
+}
+
+function toDateKey(timestampMs: number) {
+  return new Date(timestampMs).toISOString().slice(0, 10)
 }
 
 function normalizeForecastSnapshot(
-  payload: unknown,
-  options: { units: ReturnType<typeof resolveWeatherUnits>; timezone: string }
-): { current: WeatherDashboardCurrentConditions; forecast: WeatherDashboardForecastDay[] } {
-  const parsed = OpenMeteoForecastResponseSchema.safeParse(payload)
+  payload: unknown
+): {
+  timezone: string
+  current: WeatherDashboardCurrentConditions
+  hourly: WeatherDashboardHourlyForecast[]
+  daily: WeatherDashboardForecastDay[]
+  alerts: WeatherDashboardAlert[]
+} {
+  const parsed = OpenWeatherOneCallResponseSchema.safeParse(payload)
   if (!parsed.success) {
     throw new WeatherGatewayError('invalid-response', 'Weather forecast response failed schema validation.')
   }
 
   const forecast = parsed.data
+  const currentCondition = forecast.current.weather[0]
+  if (!currentCondition) {
+    throw new WeatherGatewayError('invalid-response', 'Weather forecast response did not include current conditions.')
+  }
+
   const current: WeatherDashboardCurrentConditions = {
-    temperature: forecast.current.temperature_2m,
-    apparentTemperature: forecast.current.apparent_temperature,
-    weatherCode: forecast.current.weather_code,
-    conditionLabel: getWeatherConditionLabel(forecast.current.weather_code),
-    windSpeed: forecast.current.wind_speed_10m,
+    temperature: forecast.current.temp,
+    apparentTemperature: forecast.current.feels_like,
+    weatherCode: currentCondition.id,
+    conditionLabel: normalizeWeatherConditionLabel(currentCondition.id, currentCondition.description),
+    windSpeed: forecast.current.wind_speed,
   }
 
-  const forecastLength = Math.min(
-    4,
-    forecast.daily.time.length,
-    forecast.daily.weather_code.length,
-    forecast.daily.temperature_2m_max.length,
-    forecast.daily.temperature_2m_min.length
-  )
-
-  if (forecastLength === 0) {
-    throw new WeatherGatewayError('invalid-response', 'Weather forecast response did not include any daily forecast rows.')
-  }
+  const hourlyFormatter = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    timeZone: forecast.timezone,
+  })
 
   const dayFormatter = new Intl.DateTimeFormat('en-US', {
     weekday: 'short',
-    timeZone: options.timezone || undefined,
+    timeZone: forecast.timezone,
   })
 
-  const dailyForecast: WeatherDashboardForecastDay[] = Array.from({ length: forecastLength }, (_, index) => {
-    const dateKey = forecast.daily.time[index]!
-    const parsedDate = new Date(`${dateKey}T12:00:00Z`)
-    const dayLabel = Number.isNaN(parsedDate.valueOf()) ? dateKey : dayFormatter.format(parsedDate)
+  const hourlyForecast: WeatherDashboardHourlyForecast[] = (forecast.hourly ?? [])
+    .slice(0, WEATHER_DASHBOARD_HOURLY_LIMIT)
+    .map((hour) => {
+      const condition = hour.weather[0]
+      if (!condition) {
+        throw new WeatherGatewayError('invalid-response', 'Hourly weather row did not include a weather condition.')
+      }
 
-    return {
-      dateKey,
-      dayLabel,
-      high: forecast.daily.temperature_2m_max[index]!,
-      low: forecast.daily.temperature_2m_min[index]!,
-      weatherCode: forecast.daily.weather_code[index]!,
-      conditionLabel: getWeatherConditionLabel(forecast.daily.weather_code[index]!),
-      precipitationChance: forecast.daily.precipitation_probability_max?.[index],
-    }
-  })
+      const timestampMs = hour.dt * 1000
+
+      return {
+        timeKey: new Date(timestampMs).toISOString(),
+        hourLabel: hourlyFormatter.format(timestampMs),
+        temperature: hour.temp,
+        weatherCode: condition.id,
+        conditionLabel: normalizeWeatherConditionLabel(condition.id, condition.description),
+        precipitationChance: toPercent(hour.pop),
+      }
+    })
+
+  const dailyForecast: WeatherDashboardForecastDay[] = (forecast.daily ?? [])
+    .slice(0, WEATHER_DASHBOARD_DAILY_LIMIT)
+    .map((day) => {
+      const condition = day.weather[0]
+      if (!condition) {
+        throw new WeatherGatewayError('invalid-response', 'Daily weather row did not include a weather condition.')
+      }
+
+      const timestampMs = day.dt * 1000
+      const parsedDate = new Date(timestampMs)
+      const dateKey = Number.isNaN(parsedDate.valueOf()) ? String(day.dt) : toDateKey(timestampMs)
+      const dayLabel = Number.isNaN(parsedDate.valueOf()) ? dateKey : dayFormatter.format(parsedDate)
+
+      return {
+        dateKey,
+        dayLabel,
+        high: day.temp.max,
+        low: day.temp.min,
+        weatherCode: condition.id,
+        conditionLabel: normalizeWeatherConditionLabel(condition.id, condition.description),
+        precipitationChance: toPercent(day.pop),
+      }
+    })
+
+  const alerts: WeatherDashboardAlert[] = (forecast.alerts ?? [])
+    .slice(0, WEATHER_DASHBOARD_ALERT_LIMIT)
+    .map((alert) => ({
+      source: alert.sender_name,
+      event: alert.event,
+      startsAt: alert.start * 1000,
+      endsAt: typeof alert.end === 'number' ? alert.end * 1000 : undefined,
+      description: alert.description,
+      tags: alert.tags ?? [],
+    }))
 
   return {
+    timezone: forecast.timezone,
     current,
-    forecast: dailyForecast,
+    hourly: hourlyForecast,
+    daily: dailyForecast,
+    alerts,
   }
 }
 
@@ -223,6 +343,8 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
   const now = () => options.now?.() ?? Date.now()
   const fetchImpl = options.fetch ?? fetch
   const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS
+  const freshnessMs = options.freshnessMs ?? WEATHER_DASHBOARD_FRESHNESS_MS
+  const apiKey = options.apiKey ?? process.env.OPENWEATHER_API_KEY
   const traceAdapter = options.traceAdapter ?? createNoopLangSmithAdapter()
   const cache = new Map<string, CachedWeatherSnapshot>()
 
@@ -264,7 +386,7 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
   }
 
   function buildCacheHitSnapshot(snapshot: WeatherDashboardSnapshot) {
-    if (!snapshot.current) {
+    if (!snapshot.current || snapshot.status !== 'ready') {
       return snapshot
     }
 
@@ -275,8 +397,13 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
       timezone: snapshot.timezone,
       units: snapshot.units,
       current: snapshot.current,
+      hourly: snapshot.hourly,
+      daily: snapshot.daily,
+      alerts: snapshot.alerts,
       forecast: snapshot.forecast,
-      updatedAt: snapshot.updatedAt,
+      fetchedAt: snapshot.fetchedAt,
+      staleAt: snapshot.staleAt,
+      referenceTime: now(),
       cacheStatus: 'hit',
     })
   }
@@ -307,11 +434,46 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
       return ChatBridgeWeatherDashboardResultSchema.parse({ snapshot })
     }
 
+    if (!apiKey) {
+      const snapshot = createWeatherDashboardDegradedSnapshot({
+        request: query.request,
+        locationQuery: locationHint,
+        locationName: locationHint,
+        units,
+        fetchedAt: now(),
+        staleAt: now() + freshnessMs,
+        degraded: {
+          reason: 'upstream-error',
+          title: 'Weather provider unavailable',
+          message: 'OPENWEATHER_API_KEY is not configured for the host, so live weather data is unavailable.',
+          retryable: false,
+          usingStaleSnapshot: false,
+        },
+      })
+      await trace('chatbridge.weather.fetch.config_missing', {
+        parentRunId: query.traceParentRunId,
+        inputs: {
+          location: locationHint,
+          units,
+        },
+        outputs: {
+          status: snapshot.status,
+          reason: snapshot.degraded?.reason ?? 'upstream-error',
+        },
+      })
+      return ChatBridgeWeatherDashboardResultSchema.parse({ snapshot })
+    }
+
     const cacheKey = createCacheKey(locationHint, units)
     const cachedSnapshot = readCachedReadySnapshot(cacheKey)
     const cachedEntry = cache.get(cacheKey)
 
-    if (!query.refresh && cachedEntry && cachedEntry.expiresAt > now()) {
+    if (
+      !query.refresh &&
+      cachedEntry &&
+      cachedEntry.expiresAt > now() &&
+      !isWeatherDashboardSnapshotStale(cachedEntry.snapshot, { now: now() })
+    ) {
       const snapshot = buildCacheHitSnapshot(cachedEntry.snapshot)
       await trace('chatbridge.weather.fetch.cache_hit', {
         parentRunId: query.traceParentRunId,
@@ -328,11 +490,10 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
     }
 
     try {
-      const geocodeSearch = new URL(OPEN_METEO_GEOCODE_URL)
-      geocodeSearch.searchParams.set('name', locationHint)
-      geocodeSearch.searchParams.set('count', '1')
-      geocodeSearch.searchParams.set('format', 'json')
-      geocodeSearch.searchParams.set('language', 'en')
+      const geocodeSearch = new URL(OPENWEATHER_GEOCODE_URL)
+      geocodeSearch.searchParams.set('q', locationHint)
+      geocodeSearch.searchParams.set('limit', '1')
+      geocodeSearch.searchParams.set('appid', apiKey)
 
       await trace('chatbridge.weather.fetch.started', {
         parentRunId: query.traceParentRunId,
@@ -364,37 +525,30 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
         return ChatBridgeWeatherDashboardResultSchema.parse({ snapshot })
       }
 
-      const forecastSearch = new URL(OPEN_METEO_FORECAST_URL)
-      forecastSearch.searchParams.set('latitude', String(resolvedLocation.latitude))
-      forecastSearch.searchParams.set('longitude', String(resolvedLocation.longitude))
-      forecastSearch.searchParams.set('timezone', resolvedLocation.timezone)
-      forecastSearch.searchParams.set('forecast_days', '4')
-      forecastSearch.searchParams.set(
-        'current',
-        ['temperature_2m', 'apparent_temperature', 'weather_code', 'wind_speed_10m'].join(',')
-      )
-      forecastSearch.searchParams.set(
-        'daily',
-        ['weather_code', 'temperature_2m_max', 'temperature_2m_min', 'precipitation_probability_max'].join(',')
-      )
-      forecastSearch.searchParams.set('temperature_unit', units === 'imperial' ? 'fahrenheit' : 'celsius')
-      forecastSearch.searchParams.set('wind_speed_unit', units === 'imperial' ? 'mph' : 'kmh')
+      const forecastSearch = new URL(OPENWEATHER_ONE_CALL_URL)
+      forecastSearch.searchParams.set('lat', String(resolvedLocation.latitude))
+      forecastSearch.searchParams.set('lon', String(resolvedLocation.longitude))
+      forecastSearch.searchParams.set('appid', apiKey)
+      forecastSearch.searchParams.set('units', units)
+      forecastSearch.searchParams.set('lang', 'en')
+      forecastSearch.searchParams.set('exclude', 'minutely')
 
       const forecastPayload = await fetchJson(fetchImpl, forecastSearch.toString())
-      const normalizedWeather = normalizeForecastSnapshot(forecastPayload, {
-        units,
-        timezone: resolvedLocation.timezone,
-      })
+      const normalizedWeather = normalizeForecastSnapshot(forecastPayload)
+      const fetchedAt = now()
 
       const snapshot = createWeatherDashboardReadySnapshot({
         request: query.request,
         locationQuery: locationHint,
         locationName: composeLocationName(resolvedLocation),
-        timezone: resolvedLocation.timezone,
+        timezone: normalizedWeather.timezone,
         units,
         current: normalizedWeather.current,
-        forecast: normalizedWeather.forecast,
-        updatedAt: now(),
+        hourly: normalizedWeather.hourly,
+        daily: normalizedWeather.daily,
+        alerts: normalizedWeather.alerts,
+        fetchedAt,
+        staleAt: fetchedAt + freshnessMs,
         cacheStatus: query.refresh ? 'refreshed' : 'miss',
       })
 
@@ -408,7 +562,9 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
         outputs: {
           locationName: snapshot.locationName,
           cacheStatus: snapshot.cacheStatus,
-          forecastDays: snapshot.forecast.length,
+          forecastDays: snapshot.daily.length,
+          hourlyPoints: snapshot.hourly.length,
+          alertCount: snapshot.alerts.length,
           status: snapshot.status,
         },
       })
@@ -432,8 +588,13 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
               timezone: cachedSnapshot.timezone,
               units,
               current: cachedSnapshot.current,
+              hourly: cachedSnapshot.hourly,
+              daily: cachedSnapshot.daily,
+              alerts: cachedSnapshot.alerts,
               forecast: cachedSnapshot.forecast,
-              updatedAt: cachedSnapshot.updatedAt,
+              fetchedAt: cachedSnapshot.fetchedAt,
+              staleAt: cachedSnapshot.staleAt,
+              referenceTime: now(),
               degraded: {
                 reason: normalizedError.code,
                 title: normalizedError.code === 'upstream-timeout' ? 'Upstream timed out' : 'Fresh weather unavailable',
@@ -451,7 +612,8 @@ export function createChatBridgeWeatherService(options: CreateChatBridgeWeatherS
           locationQuery: locationHint,
           locationName: locationHint,
           units,
-          updatedAt: now(),
+          fetchedAt: now(),
+          staleAt: now() + freshnessMs,
           degraded: {
             reason: normalizedError.code,
             title:

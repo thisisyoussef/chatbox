@@ -19,7 +19,7 @@ import {
 import {
   WEATHER_DASHBOARD_APP_ID,
   WEATHER_DASHBOARD_APP_NAME,
-  createWeatherDashboardLoadingSnapshot,
+  createWeatherDashboardReadySnapshot,
   type WeatherDashboardSnapshot,
 } from './apps/weather-dashboard'
 import {
@@ -1781,11 +1781,88 @@ export function buildChatBridgeDrawingKitDoodleDareSessionFixture(): Omit<Sessio
 
 export function buildChatBridgeWeatherDashboardSessionFixture(): Omit<Session, 'id'> {
   const request = 'Open Weather Dashboard for Chicago and show the forecast.'
-  const snapshot = createWeatherDashboardLoadingSnapshot({
+  const snapshot = createWeatherDashboardReadySnapshot({
     request,
     locationQuery: 'Chicago',
+    locationName: 'Chicago, Illinois, United States',
+    timezone: 'America/Chicago',
     units: 'imperial',
-    updatedAt: 3,
+    fetchedAt: 3,
+    staleAt: 603_000,
+    referenceTime: 4,
+    current: {
+      temperature: 72,
+      apparentTemperature: 70,
+      weatherCode: 800,
+      conditionLabel: 'Clear sky',
+      windSpeed: 9,
+    },
+    hourly: [
+      {
+        timeKey: '2026-04-02T17:00:00-05:00',
+        hourLabel: '12 PM',
+        temperature: 72,
+        weatherCode: 800,
+        conditionLabel: 'Clear sky',
+        precipitationChance: 10,
+      },
+      {
+        timeKey: '2026-04-02T18:00:00-05:00',
+        hourLabel: '1 PM',
+        temperature: 74,
+        weatherCode: 801,
+        conditionLabel: 'Few clouds',
+        precipitationChance: 10,
+      },
+    ],
+    daily: [
+      {
+        dateKey: '2026-04-02',
+        dayLabel: 'Thu',
+        high: 74,
+        low: 58,
+        weatherCode: 800,
+        conditionLabel: 'Clear sky',
+        precipitationChance: 10,
+      },
+      {
+        dateKey: '2026-04-03',
+        dayLabel: 'Fri',
+        high: 76,
+        low: 60,
+        weatherCode: 801,
+        conditionLabel: 'Few clouds',
+        precipitationChance: 20,
+      },
+      {
+        dateKey: '2026-04-04',
+        dayLabel: 'Sat',
+        high: 71,
+        low: 54,
+        weatherCode: 500,
+        conditionLabel: 'Light rain',
+        precipitationChance: 40,
+      },
+      {
+        dateKey: '2026-04-05',
+        dayLabel: 'Sun',
+        high: 66,
+        low: 51,
+        weatherCode: 804,
+        conditionLabel: 'Overcast',
+        precipitationChance: 55,
+      },
+    ],
+    alerts: [
+      {
+        source: 'National Weather Service',
+        event: 'Heat Advisory',
+        startsAt: 1_717_000_000_000,
+        endsAt: 1_717_003_600_000,
+        description: 'Hot conditions are expected through the afternoon.',
+        tags: ['Extreme temperature value'],
+      },
+    ],
   })
 
   return {

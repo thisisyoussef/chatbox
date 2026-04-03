@@ -1,0 +1,13 @@
+{
+  "storyId": "WD-102",
+  "stage": "agent3",
+  "mode": "manual-single-agent",
+  "status": "passed",
+  "reviewNotes": [
+    "kept WD-102 scoped to provider normalization and downstream fixture parity",
+    "did not expand the renderer panel beyond its existing 4-day preview because WD-103 owns the broader dashboard rendering work"
+  ],
+  "additionalVerification": [
+    "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/renderer/components/chatbridge/apps/ReviewedAppLaunchSurface.test.tsx test/integration/chatbridge/scenarios/weather-dashboard-flagship.test.ts src/shared/chatbridge/live-seeds.test.ts"
+  ]
+}

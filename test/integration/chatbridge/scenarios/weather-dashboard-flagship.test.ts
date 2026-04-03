@@ -138,7 +138,9 @@ describe('ChatBridge Weather Dashboard flagship lifecycle', () => {
         locationName: 'Chicago, Illinois, United States',
         timezone: 'America/Chicago',
         units: 'imperial',
-        updatedAt: 12_000,
+        fetchedAt: 12_000,
+        staleAt: 612_000,
+        referenceTime: 13_000,
         cacheStatus: 'miss',
         current: {
           temperature: 72,
@@ -147,7 +149,17 @@ describe('ChatBridge Weather Dashboard flagship lifecycle', () => {
           conditionLabel: 'Mostly clear',
           windSpeed: 9,
         },
-        forecast: [
+        hourly: [
+          {
+            timeKey: '2026-04-02T17:00:00-05:00',
+            hourLabel: '12 PM',
+            temperature: 72,
+            weatherCode: 1,
+            conditionLabel: 'Mostly clear',
+            precipitationChance: 10,
+          },
+        ],
+        daily: [
           {
             dateKey: '2026-04-02',
             dayLabel: 'Thu',
@@ -167,6 +179,7 @@ describe('ChatBridge Weather Dashboard flagship lifecycle', () => {
             precipitationChance: 20,
           },
         ],
+        alerts: [],
       })
 
       const activated = applyReviewedAppLaunchBridgeEventToSession(readied, {
@@ -255,7 +268,9 @@ describe('ChatBridge Weather Dashboard flagship lifecycle', () => {
         locationName: 'Chicago, Illinois, United States',
         timezone: 'America/Chicago',
         units: 'imperial',
-        updatedAt: 22_000,
+        fetchedAt: 22_000,
+        staleAt: 622_000,
+        referenceTime: 23_000,
         current: {
           temperature: 68,
           apparentTemperature: 67,
@@ -263,7 +278,17 @@ describe('ChatBridge Weather Dashboard flagship lifecycle', () => {
           conditionLabel: 'Overcast',
           windSpeed: 12,
         },
-        forecast: [
+        hourly: [
+          {
+            timeKey: '2026-04-02T18:00:00-05:00',
+            hourLabel: '1 PM',
+            temperature: 68,
+            weatherCode: 3,
+            conditionLabel: 'Overcast',
+            precipitationChance: 40,
+          },
+        ],
+        daily: [
           {
             dateKey: '2026-04-02',
             dayLabel: 'Thu',
@@ -274,6 +299,7 @@ describe('ChatBridge Weather Dashboard flagship lifecycle', () => {
             precipitationChance: 40,
           },
         ],
+        alerts: [],
         degraded: {
           reason: 'upstream-timeout',
           title: 'Upstream timed out',

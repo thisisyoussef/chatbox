@@ -1,0 +1,15 @@
+{
+  "storyId": "WD-102",
+  "stage": "agent1",
+  "mode": "manual-single-agent",
+  "scope": "Provider adapter and snapshot normalization for Weather Dashboard",
+  "testsAuthoredOrExpanded": [
+    "src/main/chatbridge/weather/index.test.ts",
+    "src/shared/chatbridge/apps/weather-dashboard.test.ts",
+    "src/renderer/components/chatbridge/apps/ReviewedAppLaunchSurface.test.tsx",
+    "test/integration/chatbridge/scenarios/weather-dashboard-flagship.test.ts",
+    "src/shared/chatbridge/live-seeds.test.ts"
+  ],
+  "redCommand": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/shared/chatbridge/apps/weather-dashboard.test.ts src/main/chatbridge/weather/index.test.ts",
+  "redResult": "failed before implementation was complete; weather service tests exposed the provider migration bug path and obsolete Open-Meteo assumptions"
+}

@@ -1,0 +1,19 @@
+{
+  "storyId": "WD-102",
+  "stage": "agent2",
+  "mode": "manual-single-agent",
+  "implementationFiles": [
+    "src/main/chatbridge/weather/index.ts",
+    "src/shared/chatbridge/apps/weather-dashboard.ts",
+    "src/shared/chatbridge/live-seeds.ts",
+    ".env.example"
+  ],
+  "notableFixes": [
+    "migrated the provider layer from Open-Meteo assumptions to OpenWeather geocoding plus One Call 3.0",
+    "normalized current, hourly, daily, alerts, and freshness metadata into the host snapshot contract",
+    "normalized OpenWeather country codes into readable location names",
+    "fixed an hourly formatter regression found by the red guard"
+  ],
+  "greenCommand": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/main/chatbridge/weather/index.test.ts src/shared/chatbridge/apps/weather-dashboard.test.ts",
+  "greenResult": "passed"
+}

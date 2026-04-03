@@ -59,6 +59,8 @@ const mocks = vi.hoisted(() => {
             sourceLabel: 'Host weather boundary',
             cacheStatus: 'miss',
             refreshHint: 'Refresh weather to recheck the host-owned upstream snapshot.',
+            fetchedAt: 1717000000000,
+            staleAt: 1717000600000,
             updatedAt: 1717000000000,
             current: {
               temperature: 72,
@@ -67,6 +69,28 @@ const mocks = vi.hoisted(() => {
               conditionLabel: 'Mostly clear',
               windSpeed: 9,
             },
+            hourly: [
+              {
+                timeKey: '2026-04-02T19:00:00.000Z',
+                hourLabel: '2 PM',
+                temperature: 72,
+                weatherCode: 1,
+                conditionLabel: 'Mostly clear',
+                precipitationChance: 10,
+              },
+            ],
+            daily: [
+              {
+                dateKey: '2026-04-02',
+                dayLabel: 'Thu',
+                high: 74,
+                low: 58,
+                weatherCode: 1,
+                conditionLabel: 'Mostly clear',
+                precipitationChance: 10,
+              },
+            ],
+            alerts: [],
             forecast: [
               {
                 dateKey: '2026-04-02',
