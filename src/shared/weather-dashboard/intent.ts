@@ -43,6 +43,12 @@ const NON_SPECIFIC_LOCATION_PATTERNS = [
   /^this weekend$/i,
 ]
 
+const WEATHER_LAUNCH_CONFIRMATION_PATTERNS = [
+  /^(?:ok(?:ay)?|yes|yeah|yep|sure|please|do it|go ahead|sounds good)$/i,
+  /^(?:ok(?:ay)?\s+)?(?:open|launch)\s+it$/i,
+  /^(?:open|launch)\s+(?:the\s+)?(?:weather\s+)?(?:app|dashboard)$/i,
+]
+
 const AMBIGUOUS_LOCATION_NAMES = new Set([
   'alexandria',
   'arlington',
@@ -87,6 +93,11 @@ function cleanLocationCandidate(input: string): string {
 
 function looksLikeWeatherRequest(input: string): boolean {
   return WEATHER_REQUEST_PATTERN.test(input)
+}
+
+function looksLikeLaunchConfirmation(input: string): boolean {
+  const normalized = normalizeText(stripTrailingPunctuation(input))
+  return WEATHER_LAUNCH_CONFIRMATION_PATTERNS.some((pattern) => pattern.test(normalized))
 }
 
 function isNonSpecificLocation(input: string): boolean {
@@ -233,6 +244,14 @@ export function resolveWeatherDashboardTurn(messages: Message[], userText: strin
   const pendingState = getLatestWeatherDashboardHostState(messages)
   if (pendingState?.status === 'awaiting-location' && !looksLikeWeatherRequest(normalizedUserText)) {
     return resolveLocationCandidate(extractLocationFromReply(normalizedUserText), pendingState.originalRequest)
+  }
+
+  if (pendingState?.status === 'route-ready' && looksLikeLaunchConfirmation(normalizedUserText)) {
+    return {
+      kind: 'route-ready',
+      message: `Opening Weather Dashboard for ${pendingState.locationQuery ?? 'the requested location'}.`,
+      state: pendingState,
+    }
   }
 
   if (!looksLikeWeatherRequest(normalizedUserText)) {

@@ -1,0 +1,14 @@
+{
+  "storyId": "BUG-008",
+  "stage": "agent2",
+  "status": "completed",
+  "greenCommand": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm run generate:routes && pnpm vitest run src/renderer/packages/weather-dashboard/host-routing.test.ts src/renderer/stores/session/messages.weather.test.ts",
+  "greenObserved": true,
+  "touchedFiles": [
+    "src/shared/weather-dashboard/intent.ts",
+    "src/renderer/packages/weather-dashboard/host-routing.ts",
+    "src/renderer/stores/session/messages.ts",
+    "src/renderer/packages/weather-dashboard/host-routing.test.ts",
+    "src/renderer/stores/session/messages.weather.test.ts"
+  ]
+}

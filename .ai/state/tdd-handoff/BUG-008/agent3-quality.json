@@ -1,0 +1,13 @@
+{
+  "storyId": "BUG-008",
+  "stage": "agent3",
+  "status": "completed",
+  "qualityChecks": [
+    {
+      "name": "focused-reviewed-launch-slice",
+      "command": "source \"$HOME/.nvm/nvm.sh\" && nvm use 20 >/dev/null && pnpm vitest run src/renderer/packages/weather-dashboard/host-routing.test.ts src/renderer/stores/session/messages.weather.test.ts src/renderer/packages/chatbridge/reviewed-app-launch.test.ts test/integration/chatbridge/scenarios/live-reviewed-app-invocation.test.ts",
+      "result": "passed"
+    }
+  ],
+  "followUps": []
+}
