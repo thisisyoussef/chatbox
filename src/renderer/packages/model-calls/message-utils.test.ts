@@ -1,6 +1,8 @@
 import type { Message } from '@shared/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createDrawingKitAppSnapshot } from '@shared/chatbridge'
 import { normalizeChatBridgeCompletionSummaryForModel } from '@shared/chatbridge/summary'
+import { createModelDependencies } from '@/adapters'
 import { convertToModelMessages } from './message-utils'
 
 vi.mock('@/adapters', () => ({
@@ -14,6 +16,11 @@ vi.mock('@/adapters', () => ({
 describe('convertToModelMessages chatbridge normalization', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(createModelDependencies).mockResolvedValue({
+      storage: {
+        getImage: vi.fn(async () => ''),
+      },
+    } as never)
   })
 
   it('uses host-owned summaryForModel for assistant app parts', async () => {
@@ -191,5 +198,78 @@ describe('convertToModelMessages chatbridge normalization', () => {
         content: [],
       },
     ])
+  })
+
+  it('includes the Drawing Kit state digest and latest screenshot for assistant app parts', async () => {
+    vi.mocked(createModelDependencies).mockResolvedValue({
+      storage: {
+        getImage: vi.fn(async (storageKey: string) =>
+          storageKey === 'storage://drawing-shot-1' ? 'data:image/png;base64,ZmFrZQ==' : ''
+        ),
+      },
+    } as never)
+
+    const snapshot = createDrawingKitAppSnapshot({
+      roundLabel: 'Dare 11',
+      roundPrompt: 'Draw a moon pizza.',
+      selectedTool: 'spray',
+      status: 'checkpointed',
+      caption: 'Moon pizza',
+      strokeCount: 6,
+      stickerCount: 2,
+    })
+
+    const messages: Message[] = [
+      {
+        id: 'msg-drawing-active',
+        role: 'assistant',
+        contentParts: [
+          {
+            type: 'app',
+            appId: 'drawing-kit',
+            appName: 'Drawing Kit',
+            appInstanceId: 'drawing-instance-1',
+            lifecycle: 'active',
+            summaryForModel: snapshot.summary,
+            snapshot,
+            values: {
+              chatbridgeAppMedia: {
+                screenshots: [
+                  {
+                    kind: 'app-screenshot',
+                    appId: 'drawing-kit',
+                    appInstanceId: 'drawing-instance-1',
+                    storageKey: 'storage://drawing-shot-1',
+                    capturedAt: 2_000,
+                    source: 'host-rendered',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    ]
+
+    const result = await convertToModelMessages(messages)
+
+    expect(result).toEqual([
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'text',
+            text: expect.stringContaining('Drawing Kit checkpoint banked.'),
+          },
+          {
+            type: 'file',
+            data: 'ZmFrZQ==',
+            mediaType: 'image/png',
+          },
+        ],
+      },
+    ])
+    expect((result[0]?.content?.[0] as { text: string }).text).toContain('State digest')
+    expect((result[0]?.content?.[0] as { text: string }).text).toContain('Prompt: Draw a moon pizza.')
   })
 })

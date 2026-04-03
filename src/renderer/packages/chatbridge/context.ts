@@ -2,9 +2,18 @@ import type { Message, MessageAppPart } from '@shared/types/session'
 import { cloneMessage } from '@shared/utils/message'
 import { getChatBridgeAppSummaryForModel, selectChatBridgeAppContexts } from '@shared/chatbridge/app-memory'
 import type { ChatBridgeSelectedAppContext } from '@shared/chatbridge/app-memory'
+import {
+  CHATBRIDGE_APP_MEDIA_VALUES_KEY,
+  describeChatBridgeAppScreenshot,
+  formatChatBridgeAppStateDigest,
+} from '@shared/chatbridge/app-state'
 
 export const CHATBRIDGE_APP_CONTEXT_MESSAGE_PREFIX = 'chatbridge-app-context:'
-const CHATBRIDGE_HOST_MEMORY_VALUE_KEYS = ['chatbridgeCompletion', 'chatbridgeDebateArena'] as const
+const CHATBRIDGE_HOST_MEMORY_VALUE_KEYS = [
+  'chatbridgeCompletion',
+  'chatbridgeDebateArena',
+  CHATBRIDGE_APP_MEDIA_VALUES_KEY,
+] as const
 
 function removeHostApprovedAppMemory(part: MessageAppPart): MessageAppPart {
   const { summaryForModel: _summaryForModel, values, ...rest } = part
@@ -46,6 +55,8 @@ function createInjectedAppContextMessage(selection: ChatBridgeSelectedAppContext
   const lifecycleLabel = selection.lifecycle === 'active' ? 'active' : 'recently completed'
   const continuityPriority =
     selection.lifecycle === 'active' ? 'Primary active app context' : 'Recent completed app context'
+  const digest = formatChatBridgeAppStateDigest(selection.stateDigest ?? null)
+  const screenshot = describeChatBridgeAppScreenshot(selection.latestScreenshot ?? null)
 
   return {
     id: getChatBridgeAppContextMessageId(selection),
@@ -59,16 +70,15 @@ function createInjectedAppContextMessage(selection: ChatBridgeSelectedAppContext
           `Priority: ${continuityPriority}\n` +
           `App: ${appLabel}\n` +
           `Lifecycle: ${lifecycleLabel}\n` +
-          `Summary: ${selection.summaryForModel}`,
+          `Summary: ${selection.summaryForModel}` +
+          (digest ? `\n${digest}` : '') +
+          (screenshot ? `\nScreenshot: ${screenshot}` : ''),
       },
     ],
   }
 }
 
-function sanitizeChatBridgeAppParts(
-  contextMessages: Message[],
-  selected: ChatBridgeSelectedAppContext[]
-): Message[] {
+function sanitizeChatBridgeAppParts(contextMessages: Message[], selected: ChatBridgeSelectedAppContext[]): Message[] {
   return contextMessages.map((message) => {
     let changed = false
 
@@ -106,10 +116,7 @@ function sanitizeChatBridgeAppParts(
   })
 }
 
-export function applyChatBridgeAppContext(
-  contextMessages: Message[],
-  sourceMessages: Message[]
-): Message[] {
+export function applyChatBridgeAppContext(contextMessages: Message[], sourceMessages: Message[]): Message[] {
   const selected = selectChatBridgeAppContexts(sourceMessages)
   const sanitizedMessages = sanitizeChatBridgeAppParts(contextMessages, selected)
 

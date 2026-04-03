@@ -2,8 +2,9 @@
 
 - Pack state: validated baseline reopened by the smoke-audit rebuild queue and
   active catalog transition
-- Current story: `CB-507` is validated; Pack 05 is complete for the active
-  rebuild queue and the next program story is `CB-105`
+- Current story: `CB-511` is a validated post-pack hardening follow-up; Pack 05
+  remains complete for the active rebuild queue and the next program story is
+  `CB-105`
 - Unlock rule: this pack opens only after Pack 4 has a written exit memo and
   linked proof in `progress.md`
 
@@ -34,6 +35,7 @@ Legacy parked packets that are not part of the active queue:
 8. CB-508
 9. CB-509
 10. CB-510
+11. CB-511
 
 ## Story Ledger
 
@@ -49,6 +51,7 @@ Legacy parked packets that are not part of the active queue:
 | CB-508 | validated | Default reviewed catalog and seed inspection now point to Chess, Drawing Kit, and Weather while Debate Arena and Story Builder stay explicit legacy references. |
 | CB-509 | validated | Drawing Kit now ships as the approved doodle-game flagship runtime with bounded checkpoints, traced follow-up/recovery proof, and a supported `drawing-kit-doodle-dare` seed/manual-smoke fixture. |
 | CB-510 | validated | Weather Dashboard now launches through a host-owned weather boundary, supports traced refresh/degraded states, and ships a supported `weather-dashboard` seed/manual-smoke fixture. |
+| CB-511 | validated | Drawing Kit follow-up chat now receives a layered continuity bundle with summary, bounded state digest, and a latest host-rendered screenshot artifact wired through reviewed app persistence and model conversion. |
 
 ## Exit Checklist
 
@@ -98,3 +101,7 @@ flagship set.
   host-owned route receipts, adding explicit clarify actions that reuse the
   reviewed launch seam, and preserving stale replay rejection inline in the
   timeline.
+- `CB-511` extends the validated Drawing Kit flagship with layered live-context
+  grounding so later chat can answer questions about the current canvas using
+  trusted summary, digest, and screenshot evidence instead of summary-only
+  recall.

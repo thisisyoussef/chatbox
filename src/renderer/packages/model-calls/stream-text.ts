@@ -1,4 +1,8 @@
-import { buildChatBridgeChessReasoningPrompt, wrapChatBridgeHostTools } from '@shared/chatbridge'
+import {
+  buildChatBridgeChessReasoningPrompt,
+  buildChatBridgeSelectedAppContextPrompt,
+  wrapChatBridgeHostTools,
+} from '@shared/chatbridge'
 import type { ChatBridgeAppRecordSnapshot } from '@shared/chatbridge/app-records'
 import { getModel } from '@shared/models'
 import { ChatboxAIAPIError, OCRError } from '@shared/models/errors'
@@ -160,9 +164,10 @@ export function buildAdditionalConversationInfo(
   toolSetInstructions: string,
   appRecords?: ChatBridgeAppRecordSnapshot
 ): string {
+  const selectedAppContextPrompt = buildChatBridgeSelectedAppContextPrompt(messages)
   return [
     toolSetInstructions,
-    buildChatBridgeAppContextPrompt(appRecords),
+    selectedAppContextPrompt ?? buildChatBridgeAppContextPrompt(appRecords),
     buildChatBridgeChessReasoningPrompt(messages),
   ]
     .filter(Boolean)

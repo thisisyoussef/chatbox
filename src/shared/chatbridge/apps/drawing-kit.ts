@@ -101,6 +101,14 @@ function normalizeCaption(value?: string) {
   return trimmed ? trimmed : undefined
 }
 
+function escapeSvgText(value: string) {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
+}
+
+function encodeSvgDataUrl(svg: string) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
 function pickDrawingKitPromptPack(request?: string) {
   const seed = request?.trim() ? request : DRAWING_KIT_APP_ID
   return DRAWING_KIT_PROMPT_PACKS[hashString(seed) % DRAWING_KIT_PROMPT_PACKS.length]
@@ -155,9 +163,7 @@ function buildDrawingKitStatusText(status: DrawingKitStatus, stickerCount: numbe
   }
 
   if (status === 'checkpointed') {
-    return stickerCount > 0
-      ? `${stickerCount} ${pluralize(stickerCount, 'sticker')} banked`
-      : 'Checkpoint banked'
+    return stickerCount > 0 ? `${stickerCount} ${pluralize(stickerCount, 'sticker')} banked` : 'Checkpoint banked'
   }
 
   if (status === 'drawing') {
@@ -214,20 +220,22 @@ function buildDrawingKitSummary(options: {
   return `Drawing Kit round in progress. Prompt "${options.roundPrompt}". ${captionSegment} ${options.strokeCount} ${pluralize(options.strokeCount, 'stroke')} are visible with ${options.selectedTool}. ${rewardSegment}`
 }
 
-export function createDrawingKitAppSnapshot(options: {
-  request?: string
-  roundLabel?: string
-  roundPrompt?: string
-  rewardLabel?: string
-  selectedTool?: DrawingKitTool
-  status?: DrawingKitStatus
-  caption?: string
-  strokeCount?: number
-  stickerCount?: number
-  checkpointId?: string
-  lastUpdatedAt?: number
-  previewMarks?: DrawingKitPreviewMark[]
-} = {}): DrawingKitAppSnapshot {
+export function createDrawingKitAppSnapshot(
+  options: {
+    request?: string
+    roundLabel?: string
+    roundPrompt?: string
+    rewardLabel?: string
+    selectedTool?: DrawingKitTool
+    status?: DrawingKitStatus
+    caption?: string
+    strokeCount?: number
+    stickerCount?: number
+    checkpointId?: string
+    lastUpdatedAt?: number
+    previewMarks?: DrawingKitPreviewMark[]
+  } = {}
+): DrawingKitAppSnapshot {
   const updatedAt = options.lastUpdatedAt ?? Date.now()
   const promptPack = pickDrawingKitPromptPack(options.request)
   const roundLabel = options.roundLabel ?? promptPack.roundLabel
@@ -284,11 +292,9 @@ export function parseDrawingKitAppSnapshot(snapshot: unknown) {
   return parsed.success ? parsed.data : null
 }
 
-export function createInitialDrawingKitAppSnapshot(options: {
-  request?: string
-  updatedAt?: number
-  snapshot?: unknown
-} = {}) {
+export function createInitialDrawingKitAppSnapshot(
+  options: { request?: string; updatedAt?: number; snapshot?: unknown } = {}
+) {
   const persisted = parseDrawingKitAppSnapshot(options.snapshot)
   if (persisted) {
     return persisted
@@ -326,4 +332,91 @@ export function getDrawingKitFallbackText(snapshot?: DrawingKitAppSnapshot | nul
   }
 
   return `The host can fall back to checkpoint ${snapshot.checkpointId} with "${snapshot.checkpointSummary}" even if the live canvas stops responding.`
+}
+
+function renderLineMark(mark: Extract<DrawingKitPreviewMark, { kind: 'line' }>, width: number, height: number) {
+  const points = mark.points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${Math.round(point.x * width)} ${Math.round(point.y * height)}`)
+    .join(' ')
+
+  if (mark.tool === 'spray') {
+    return mark.points
+      .map((point, index) => {
+        const cx = Math.round(point.x * width)
+        const cy = Math.round(point.y * height)
+        return Array.from({ length: 5 }, (_, sprayIndex) => {
+          const angle = index * 0.8 + sprayIndex
+          const radius = 4 + sprayIndex * 2
+          const x = cx + Math.round(Math.cos(angle) * radius)
+          const y = cy + Math.round(Math.sin(angle) * radius)
+          return `<circle cx="${x}" cy="${y}" r="2" fill="${mark.color}" />`
+        }).join('')
+      })
+      .join('')
+  }
+
+  return `<path d="${points}" fill="none" stroke="${mark.color}" stroke-width="${mark.width}" stroke-linecap="round" stroke-linejoin="round" />`
+}
+
+function renderStampMark(mark: Extract<DrawingKitPreviewMark, { kind: 'stamp' }>, width: number, height: number) {
+  const x = Math.round(mark.x * width)
+  const y = Math.round(mark.y * height)
+  const radius = mark.size
+
+  if (mark.stamp === 'burst') {
+    const points = Array.from({ length: 12 }, (_, index) => {
+      const outer = index % 2 === 0 ? radius : radius * 0.45
+      const angle = (Math.PI / 6) * index
+      return `${Math.round(x + Math.cos(angle) * outer)},${Math.round(y + Math.sin(angle) * outer)}`
+    }).join(' ')
+    return `<polygon points="${points}" fill="${mark.color}" />`
+  }
+
+  const points = Array.from({ length: 10 }, (_, index) => {
+    const outer = index % 2 === 0 ? radius : radius * 0.45
+    const angle = -Math.PI / 2 + (Math.PI / 5) * index
+    return `${Math.round(x + Math.cos(angle) * outer)},${Math.round(y + Math.sin(angle) * outer)}`
+  }).join(' ')
+  return `<polygon points="${points}" fill="${mark.color}" />`
+}
+
+export function createDrawingKitScreenshotDataUrl(snapshot: DrawingKitAppSnapshot) {
+  const width = 900
+  const height = 640
+  const canvasX = 40
+  const canvasY = 170
+  const canvasWidth = 540
+  const canvasHeight = 360
+  const marks = snapshot.previewMarks
+    .map((mark) =>
+      mark.kind === 'line'
+        ? renderLineMark(mark, canvasWidth, canvasHeight)
+        : renderStampMark(mark, canvasWidth, canvasHeight)
+    )
+    .join('')
+
+  const caption = escapeSvgText(snapshot.caption ?? 'Uncaptioned doodle')
+  const summary = escapeSvgText(snapshot.summary)
+  const checkpoint = escapeSvgText(snapshot.checkpointSummary)
+  const prompt = escapeSvgText(snapshot.roundPrompt)
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <rect width="${width}" height="${height}" rx="32" fill="#fff7e5" />
+    <rect x="${canvasX}" y="${canvasY}" width="${canvasWidth}" height="${canvasHeight}" rx="26" fill="#fffdf4" stroke="#f1c56c" stroke-width="3" />
+    <text x="40" y="42" font-size="18" font-weight="800" fill="#b87000">${escapeSvgText(snapshot.roundLabel.toUpperCase())} · STICKER SPRINT</text>
+    <text x="40" y="86" font-size="34" font-weight="900" fill="#26211d">Drawing Kit</text>
+    <text x="40" y="122" font-size="24" font-weight="800" fill="#ff8a4c">${prompt}</text>
+    <rect x="620" y="170" width="240" height="160" rx="24" fill="#f4f9ff" stroke="#bed8ff" />
+    <text x="644" y="208" font-size="16" font-weight="800" fill="#267df0">STATUS</text>
+    <text x="644" y="242" font-size="18" fill="#1f2933">${escapeSvgText(snapshot.statusText)}</text>
+    <text x="644" y="278" font-size="16" fill="#44505c">Tool: ${escapeSvgText(snapshot.selectedTool)}</text>
+    <text x="644" y="308" font-size="16" fill="#44505c">Caption: ${caption}</text>
+    <rect x="620" y="354" width="240" height="182" rx="24" fill="#fff7de" stroke="#f1c56c" />
+    <text x="644" y="392" font-size="16" font-weight="800" fill="#ff8a4c">CHECKPOINT</text>
+    <text x="644" y="426" font-size="16" fill="#44505c">${checkpoint}</text>
+    <text x="40" y="580" font-size="15" fill="#6f6156">${summary}</text>
+    <g transform="translate(${canvasX}, ${canvasY})">${marks}</g>
+  </svg>`
+
+  return encodeSvgDataUrl(svg)
 }

@@ -2,6 +2,14 @@ import type { Message, MessageAppPart } from '../types/session'
 import { ChatBridgeCompletionPayloadSchema } from './completion'
 import { getChatBridgeDebateArenaState, getChatBridgeDebateArenaSummaryForModel } from './debate-arena'
 import { normalizeChatBridgeCompletionSummaryForModel } from './summary'
+import {
+  buildChatBridgeAppStateDigest,
+  describeChatBridgeAppScreenshot,
+  formatChatBridgeAppStateDigest,
+  getLatestChatBridgeAppScreenshot,
+  type ChatBridgeAppScreenshotRef,
+  type ChatBridgeAppStateDigest,
+} from './app-state'
 
 export type ChatBridgeSelectedAppContext = {
   messageId: string
@@ -10,15 +18,17 @@ export type ChatBridgeSelectedAppContext = {
   appInstanceId: string
   lifecycle: 'active' | 'complete'
   summaryForModel: string
+  stateDigest?: ChatBridgeAppStateDigest
+  latestScreenshot?: ChatBridgeAppScreenshotRef
 }
 
 function createSelectedAppContext(
   messageId: string,
-  part: Pick<MessageAppPart, 'appId' | 'appName' | 'appInstanceId'>,
+  part: Pick<MessageAppPart, 'appId' | 'appName' | 'appInstanceId' | 'snapshot' | 'values'>,
   lifecycle: 'active' | 'complete',
   summaryForModel: string
 ): ChatBridgeSelectedAppContext {
-  return {
+  const selected: ChatBridgeSelectedAppContext = {
     messageId,
     appId: part.appId,
     appName: part.appName,
@@ -26,6 +36,18 @@ function createSelectedAppContext(
     lifecycle,
     summaryForModel,
   }
+
+  const stateDigest = buildChatBridgeAppStateDigest(part as MessageAppPart)
+  if (stateDigest) {
+    selected.stateDigest = stateDigest
+  }
+
+  const latestScreenshot = getLatestChatBridgeAppScreenshot(part.values)
+  if (latestScreenshot) {
+    selected.latestScreenshot = latestScreenshot
+  }
+
+  return selected
 }
 
 export function getChatBridgeAppSummaryForModel(part: MessageAppPart): string | null {
@@ -113,4 +135,32 @@ export function selectChatBridgeAppContexts(messages: Message[]): ChatBridgeSele
 
 export function selectChatBridgeAppContext(messages: Message[]): ChatBridgeSelectedAppContext | null {
   return selectChatBridgeAppContexts(messages)[0] ?? null
+}
+
+export function buildChatBridgeSelectedAppContextPrompt(messages: Message[]): string | null {
+  const selected = selectChatBridgeAppContexts(messages)
+  if (selected.length === 0) {
+    return null
+  }
+
+  return selected
+    .map((selection, index) => {
+      const digest = formatChatBridgeAppStateDigest(selection.stateDigest ?? null)
+      const screenshot = describeChatBridgeAppScreenshot(selection.latestScreenshot ?? null)
+      const lifecycleLabel = selection.lifecycle === 'active' ? 'active' : 'recently completed'
+
+      return [
+        `ChatBridge ${index === 0 ? 'primary' : 'secondary'} app continuity context (host-owned and normalized):`,
+        `- App ID: ${selection.appId}`,
+        `- App instance ID: ${selection.appInstanceId}`,
+        `- Lifecycle: ${lifecycleLabel}`,
+        `- Summary: ${selection.summaryForModel}`,
+        ...(digest ? [digest] : []),
+        ...(screenshot ? [`- Screenshot: ${screenshot}`] : []),
+        selection.lifecycle === 'active'
+          ? 'Use only this bounded host state for app-aware continuity. Do not assume app state that is not explicitly shown here.'
+          : 'Treat this as the most recent completed app context, not a guaranteed live runtime.',
+      ].join('\n')
+    })
+    .join('\n\n')
 }

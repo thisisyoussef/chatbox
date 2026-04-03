@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampDrawingKitPreviewMarks,
+  createDrawingKitScreenshotDataUrl,
   createDrawingKitAppSnapshot,
   createInitialDrawingKitAppSnapshot,
   getDrawingKitFallbackText,
@@ -58,5 +59,33 @@ describe('shared drawing kit helpers', () => {
     expect(snapshot.checkpointSummary).toContain('Triple pickle sandwich')
     expect(snapshot.summary).toContain('Later chat can use the checkpoint instead of raw stroke history.')
     expect(getDrawingKitFallbackText(snapshot)).toContain('drawing-kit-4242')
+  })
+
+  it('renders a bounded screenshot data URL from the trusted snapshot', () => {
+    const screenshot = createDrawingKitScreenshotDataUrl(
+      createDrawingKitAppSnapshot({
+        roundLabel: 'Dare 11',
+        roundPrompt: 'Draw a moon pizza.',
+        selectedTool: 'spray',
+        status: 'drawing',
+        caption: 'Moon pizza',
+        previewMarks: [
+          {
+            kind: 'line',
+            tool: 'spray',
+            color: '#ff8a4c',
+            width: 3,
+            points: [
+              { x: 0.1, y: 0.2 },
+              { x: 0.6, y: 0.7 },
+            ],
+          },
+        ],
+      })
+    )
+
+    expect(screenshot.startsWith('data:image/svg+xml;charset=utf-8,')).toBe(true)
+    expect(decodeURIComponent(screenshot.split(',')[1] ?? '')).toContain('Moon pizza')
+    expect(decodeURIComponent(screenshot.split(',')[1] ?? '')).toContain('Drawing Kit')
   })
 })
