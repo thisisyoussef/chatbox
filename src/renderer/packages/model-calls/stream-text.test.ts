@@ -363,7 +363,7 @@ describe('streamText tracing metadata', () => {
                       storageKey: 'storage://drawing-shot-1',
                       capturedAt: 4_200,
                       summary: 'Moon pizza on the sticky-note canvas.',
-                      source: 'host-rendered',
+                      source: 'runtime-captured',
                     },
                   ],
                 },

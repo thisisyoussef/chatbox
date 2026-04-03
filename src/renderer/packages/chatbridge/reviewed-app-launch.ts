@@ -38,6 +38,7 @@ import { z } from 'zod'
 import { createModelDependencies } from '@/adapters'
 import { createChatBridgeAppRecordStore } from './app-records'
 import { buildChessMessageAppPart } from './chess-session-state'
+import { describeImageData } from '../model-calls/preprocess'
 
 export {
   CHATBRIDGE_REVIEWED_APP_LAUNCH_SCHEMA_VERSION,
@@ -481,6 +482,16 @@ function shouldCaptureDrawingKitScreenshot(snapshot: NonNullable<ReturnType<type
   return snapshot.strokeCount > 0 || snapshot.stickerCount > 0 || Boolean(snapshot.caption)
 }
 
+async function describeDrawingKitScreenshot(imageDataUrl: string, fallbackSummary?: string) {
+  try {
+    const description = await describeImageData(imageDataUrl)
+    return readString(description) ?? fallbackSummary
+  } catch (error) {
+    console.warn('Failed to generate Drawing Kit image description:', error)
+    return fallbackSummary
+  }
+}
+
 async function createReviewedAppStateScreenshotRef(
   part: MessageAppPart,
   event: Extract<Exclude<BridgeAppEvent, BridgeReadyEvent>, { kind: 'app.state' }>
@@ -494,8 +505,11 @@ async function createReviewedAppStateScreenshotRef(
     return null
   }
 
+  const fallbackSummary = buildDrawingKitScreenshotSummary(snapshot)
+  const screenshotDataUrl = readString(event.screenshotDataUrl) ?? createDrawingKitScreenshotDataUrl(snapshot)
   const dependencies = await createModelDependencies()
-  const storageKey = await dependencies.storage.saveImage('chatbridge-app', createDrawingKitScreenshotDataUrl(snapshot))
+  const storageKey = await dependencies.storage.saveImage('chatbridge-app', screenshotDataUrl)
+  const summary = await describeDrawingKitScreenshot(screenshotDataUrl, fallbackSummary)
 
   return {
     kind: 'app-screenshot',
@@ -503,8 +517,8 @@ async function createReviewedAppStateScreenshotRef(
     appInstanceId: part.appInstanceId,
     storageKey,
     capturedAt: snapshot.lastUpdatedAt,
-    summary: buildDrawingKitScreenshotSummary(snapshot),
-    source: 'host-rendered',
+    summary,
+    source: readString(event.screenshotDataUrl) ? 'runtime-captured' : 'host-rendered',
   }
 }
 

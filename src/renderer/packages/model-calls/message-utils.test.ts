@@ -241,7 +241,8 @@ describe('convertToModelMessages chatbridge normalization', () => {
                     appInstanceId: 'drawing-instance-1',
                     storageKey: 'storage://drawing-shot-1',
                     capturedAt: 2_000,
-                    source: 'host-rendered',
+                    summary: 'A round moon pizza with orange spray shading and two small stickers near the top edge.',
+                    source: 'runtime-captured',
                   },
                 ],
               },
@@ -271,5 +272,8 @@ describe('convertToModelMessages chatbridge normalization', () => {
     ])
     expect((result[0]?.content?.[0] as { text: string }).text).toContain('State digest')
     expect((result[0]?.content?.[0] as { text: string }).text).toContain('Prompt: Draw a moon pizza.')
+    expect((result[0]?.content?.[0] as { text: string }).text).toContain(
+      'Visible board: A round moon pizza with orange spray shading and two small stickers near the top edge.'
+    )
   })
 })

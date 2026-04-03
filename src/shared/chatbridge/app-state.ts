@@ -77,6 +77,7 @@ function buildDrawingKitDigest(part: MessageAppPart): ChatBridgeAppStateDigest |
   }
 
   const recentMarks = snapshot.previewMarks.slice(-MAX_DRAWING_KIT_MARKS).map(describeDrawingKitMark)
+  const latestScreenshotDescription = normalizeSummary(getLatestChatBridgeAppScreenshot(part.values)?.summary)
 
   return {
     kind: 'drawing-kit',
@@ -89,6 +90,7 @@ function buildDrawingKitDigest(part: MessageAppPart): ChatBridgeAppStateDigest |
       `Caption: ${snapshot.caption ?? 'none'}`,
       `Checkpoint: ${snapshot.checkpointSummary}`,
       `Marks: ${snapshot.strokeCount} total, ${snapshot.stickerCount} stickers`,
+      ...(latestScreenshotDescription ? [`Visible board: ${latestScreenshotDescription}`] : []),
       ...(recentMarks.length > 0 ? [`Recent marks: ${recentMarks.join(', ')}`] : []),
     ],
   }

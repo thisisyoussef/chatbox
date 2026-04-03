@@ -420,7 +420,7 @@ describe('ReviewedAppLaunchSurface', () => {
     })
 
     await waitFor(() => {
-      expect(mocks.updateSessionWithMessages).toHaveBeenCalledTimes(2)
+      expect(mocks.updateSessionWithMessages).toHaveBeenCalledTimes(3)
     })
   })
 

@@ -315,6 +315,73 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
         padding: 18px;
       }
 
+      .runtime-stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .runtime-round-strip,
+      .runtime-tool-strip {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border: 1px solid var(--paper-edge);
+        border-radius: 22px;
+        padding: 12px 14px;
+      }
+
+      .runtime-round-strip {
+        background: #f0d6ff;
+      }
+
+      .runtime-tool-strip {
+        background: #ffe6a7;
+      }
+
+      .runtime-round-meta,
+      .runtime-tool-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .runtime-round-meta {
+        min-width: 0;
+        flex: 1 1 420px;
+      }
+
+      .runtime-round-label {
+        margin: 0;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.75);
+        border: 1px solid rgba(38, 33, 29, 0.18);
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .runtime-round-text {
+        min-width: 0;
+        display: grid;
+        gap: 4px;
+      }
+
+      .runtime-round-text strong {
+        font-size: 18px;
+        line-height: 1.1;
+      }
+
+      .runtime-round-text span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.3;
+      }
+
       .runtime-topbar,
       .runtime-toolbar,
       .runtime-meta-grid,
@@ -478,10 +545,42 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
         position: relative;
         border-radius: 24px;
         border: 1px dashed #f0c36a;
-        background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 249, 232, 0.96)),
-          repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(234, 198, 97, 0.12) 27px, rgba(234, 198, 97, 0.12) 28px);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 249, 232, 0.96));
         overflow: hidden;
+      }
+
+      .runtime-board-card {
+        min-width: 0;
+        border-radius: 28px;
+        border: 1px solid var(--paper-edge);
+        background: #fffdf4;
+        padding: 14px;
+      }
+
+      .runtime-board-footer {
+        margin-top: 12px;
+      }
+
+      .runtime-caption-inline {
+        display: grid;
+        gap: 6px;
+      }
+
+      .runtime-caption-inline label {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #915100;
+      }
+
+      .runtime-caption-inline input {
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 14px;
+        border: 1px solid #edc676;
+        padding: 12px 14px;
+        background: white;
       }
 
       canvas {
@@ -624,6 +723,10 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
           marks: Array.isArray(initialSnapshot.previewMarks) ? JSON.parse(JSON.stringify(initialSnapshot.previewMarks)) : [],
           bankedSnapshot: JSON.parse(JSON.stringify(initialSnapshot)),
           pointerStroke: null,
+          lastPublishedBoardFingerprint:
+            Array.isArray(initialSnapshot.previewMarks) && initialSnapshot.previewMarks.length > 0
+              ? JSON.stringify(normalizeMarks(initialSnapshot.previewMarks))
+              : '',
         };
 
         function clone(value) {
@@ -752,6 +855,14 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
           return nextSnapshot;
         }
 
+        function createBoardFingerprint() {
+          if (!Array.isArray(state.marks) || state.marks.length === 0) {
+            return '';
+          }
+
+          return JSON.stringify(normalizeMarks(state.marks));
+        }
+
         function sendBridgeEvent(kind, payload) {
           if (!bridgePort || !currentEnvelope) {
             return;
@@ -774,12 +885,13 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
             state.bankedSnapshot = clone(nextSnapshot);
           }
 
+          render();
+
           sendBridgeEvent('app.state', {
             idempotencyKey: reason + '-' + nextSnapshot.checkpointId,
             snapshot: nextSnapshot,
+            ...createScreenshotPayload(),
           });
-
-          render();
           return nextSnapshot;
         }
 
@@ -816,15 +928,7 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
         }
 
         function sendProgressCheckpoint(reason) {
-          const nextSnapshot = createSnapshot('drawing');
-          state.snapshot = clone(nextSnapshot);
-
-          sendBridgeEvent('app.state', {
-            idempotencyKey: reason + '-' + nextSnapshot.strokeCount + '-' + nextSnapshot.lastUpdatedAt,
-            snapshot: nextSnapshot,
-          });
-
-          render();
+          publishSnapshot(state.marks.length > 0 ? 'drawing' : 'blank', reason);
         }
 
         function drawLine(ctx, mark, width, height) {
@@ -913,6 +1017,20 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
           ctx.restore();
         }
 
+        function paintCanvasBackground(ctx, width, height) {
+          ctx.fillStyle = '#fff8b8';
+          ctx.fillRect(0, 0, width, height);
+
+          ctx.strokeStyle = 'rgba(234, 198, 97, 0.28)';
+          ctx.lineWidth = 1;
+          for (let y = 28; y < height; y += 28) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(width, y);
+            ctx.stroke();
+          }
+        }
+
         function renderCanvas() {
           const canvas = document.getElementById('drawing-canvas');
           if (!canvas) {
@@ -931,6 +1049,7 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
           }
 
           ctx.clearRect(0, 0, width, height);
+          paintCanvasBackground(ctx, width, height);
 
           state.marks.forEach((mark) => {
             if (mark.kind === 'line') {
@@ -945,13 +1064,44 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
           }
         }
 
+        function captureBoardImageDataUrl() {
+          const canvas = document.getElementById('drawing-canvas');
+          if (!(canvas instanceof HTMLCanvasElement)) {
+            return null;
+          }
+
+          try {
+            return canvas.toDataURL('image/png');
+          } catch {
+            return null;
+          }
+        }
+
+        function createScreenshotPayload() {
+          const fingerprint = createBoardFingerprint();
+          if (!fingerprint) {
+            state.lastPublishedBoardFingerprint = '';
+            return {};
+          }
+
+          if (fingerprint === state.lastPublishedBoardFingerprint) {
+            return {};
+          }
+
+          const screenshotDataUrl = captureBoardImageDataUrl();
+          if (!screenshotDataUrl) {
+            return {};
+          }
+
+          state.lastPublishedBoardFingerprint = fingerprint;
+          return {
+            screenshotDataUrl,
+          };
+        }
+
         function pushMark(mark, reason) {
           state.marks = normalizeMarks(state.marks.concat(mark));
-          if (state.marks.length === 1 || state.marks.length % 4 === 0 || reason === 'stamp') {
-            sendProgressCheckpoint(reason);
-          } else {
-            render();
-          }
+          sendProgressCheckpoint(reason);
         }
 
         function getCanvasPoint(event, canvas) {
@@ -998,6 +1148,10 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
         }
 
         function undoMark() {
+          if (state.marks.length === 0) {
+            return;
+          }
+
           state.marks = state.marks.slice(0, -1);
           sendProgressCheckpoint('undo');
         }
@@ -1016,11 +1170,12 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
             captionInput.value = baseSnapshot.caption || '';
           }
 
+          render();
           sendBridgeEvent('app.state', {
             idempotencyKey: 'replay-' + state.snapshot.checkpointId,
             snapshot: state.snapshot,
+            ...createScreenshotPayload(),
           });
-          render();
         }
 
         function bindCanvas() {
@@ -1134,41 +1289,42 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
           const snapshot = state.snapshot;
           root.innerHTML = \`
             <article class="doodle-shell" data-drawing-kit-runtime="true">
-              <div class="runtime-topbar">
-                <div class="runtime-title-block">
-                  <p class="runtime-eyebrow">\${snapshot.roundLabel.toUpperCase()} · STICKER SPRINT</p>
-                  <h1 class="runtime-title">Drawing Kit should feel like a sticky-note doodle dare</h1>
-                  <p class="runtime-subtitle">One weird prompt, four chunky tools, a sticker jackpot, and a clean host checkpoint if the round gets handed back to chat.</p>
-                </div>
-                <div class="runtime-actions">
-                  <button id="replay-button" class="action-button" type="button">Replay round</button>
-                  <button id="lock-button" class="action-button action-button--primary" type="button">Lock this round</button>
-                </div>
-              </div>
-
-              <div class="runtime-toolbar">
-                <div class="runtime-tools" role="toolbar" aria-label="Drawing Kit tools">
-                  <button class="tool-chip" data-tool="brush" aria-pressed="\${snapshot.selectedTool === 'brush'}" type="button">Brush</button>
-                  <button class="tool-chip" data-tool="spray" aria-pressed="\${snapshot.selectedTool === 'spray'}" type="button">Spray</button>
-                  <button class="tool-chip" data-tool="stamp" aria-pressed="\${snapshot.selectedTool === 'stamp'}" type="button">Stamp</button>
-                  <button id="undo-button" class="tool-chip tool-chip--warm" type="button">Undo</button>
-                  <button id="squiggle-button" class="tool-chip tool-chip--warm" type="button">Add squiggle</button>
-                  <button id="sticker-button" class="tool-chip tool-chip--warm" type="button">Drop sticker</button>
-                </div>
-                <span class="runtime-pill">\${snapshot.statusText}</span>
-              </div>
-
-              <div class="runtime-meta-grid">
-                <section class="runtime-canvas-card">
-                  <div class="runtime-prompt-card">
-                    <strong>\${snapshot.roundLabel}</strong>
-                    <span>\${snapshot.roundPrompt}</span>
+              <div class="runtime-stack">
+                <div class="runtime-round-strip">
+                  <div class="runtime-round-meta">
+                    <p class="runtime-round-label">\${snapshot.roundLabel}</p>
+                    <div class="runtime-round-text">
+                      <strong>\${snapshot.roundPrompt}</strong>
+                      <span>\${snapshot.statusText}</span>
+                    </div>
                   </div>
+                  <div class="runtime-actions">
+                    <button id="replay-button" class="action-button" type="button">Replay round</button>
+                    <button id="lock-button" class="action-button action-button--primary" type="button">Lock this round</button>
+                  </div>
+                </div>
+
+                <div class="runtime-tool-strip">
+                  <div class="runtime-tools" role="toolbar" aria-label="Drawing Kit tools">
+                    <button class="tool-chip" data-tool="brush" aria-pressed="\${snapshot.selectedTool === 'brush'}" type="button">Brush</button>
+                    <button class="tool-chip" data-tool="spray" aria-pressed="\${snapshot.selectedTool === 'spray'}" type="button">Spray</button>
+                    <button class="tool-chip" data-tool="stamp" aria-pressed="\${snapshot.selectedTool === 'stamp'}" type="button">Stamp</button>
+                    <button id="undo-button" class="tool-chip tool-chip--warm" type="button">Undo</button>
+                    <button id="squiggle-button" class="tool-chip tool-chip--warm" type="button">Add squiggle</button>
+                    <button id="sticker-button" class="tool-chip tool-chip--warm" type="button">Drop sticker</button>
+                  </div>
+                  <div class="runtime-tool-actions">
+                    <span class="runtime-pill">\${snapshot.statusText}</span>
+                    <button id="checkpoint-button" class="action-button" type="button">Bank this round</button>
+                  </div>
+                </div>
+
+                <section class="runtime-board-card">
                   <div class="runtime-canvas-frame">
                     <canvas id="drawing-canvas" tabindex="0" aria-label="Drawing Kit doodle canvas"></canvas>
                   </div>
-                  <div class="runtime-canvas-actions">
-                    <div class="runtime-caption-field">
+                  <div class="runtime-board-footer">
+                    <div class="runtime-caption-inline">
                       <label for="caption-input">Tell chat what you drew</label>
                       <input
                         id="caption-input"
@@ -1178,24 +1334,9 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
                         placeholder="Example: triple pickle sandwich"
                       />
                     </div>
-                    <button id="checkpoint-button" class="action-button" type="button">Bank this round</button>
                   </div>
-                  <p class="runtime-keyboard-note">Keyboard path: use the buttons above or press B, S, T, and U while the canvas is focused.</p>
                 </section>
-
-                <section class="runtime-footer-grid" style="flex: 0 0 290px; flex-direction: column; min-width: 290px;">
-                  <article class="runtime-support-card runtime-support-card--blue">
-                    <p class="runtime-support-eyebrow" style="color:#267df0;">Round bank</p>
-                    <h2>Bank this round</h2>
-                    <p>The host keeps the prompt, doodle label, and sticker win without storing raw stroke history.</p>
-                    <div class="runtime-summary-inline">\${snapshot.checkpointSummary}</div>
-                  </article>
-                  <article class="runtime-support-card runtime-support-card--accent">
-                    <p class="runtime-support-eyebrow" style="color:#ff8a4c;">Chat handoff</p>
-                    <h2>Tell chat what you drew</h2>
-                    <p>\${snapshot.summary}</p>
-                  </article>
-                </section>
+                <p class="runtime-keyboard-note">Keyboard path: use the buttons above or press B, S, T, and U while the canvas is focused.</p>
               </div>
             </article>
             <p id="runtime-status-live" class="sr-only" aria-live="polite">\${snapshot.statusText}</p>
@@ -1211,6 +1352,7 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
         }
 
         function sendInitialState() {
+          render();
           sendBridgeEvent('app.state', {
             idempotencyKey: 'drawing-kit-ready-' + currentEnvelope.bridgeSessionId,
             snapshot: state.snapshot,
