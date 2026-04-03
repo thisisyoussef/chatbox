@@ -94,6 +94,8 @@ export function WeatherDashboardPanel({
     snapshot.locationQuery && snapshot.locationQuery !== snapshot.locationName
       ? `Requested as ${snapshot.locationQuery}`
       : null
+  const locationMetaText =
+    snapshot.status === 'unavailable' ? 'Enter a city or region to load forecast details.' : snapshot.lastUpdatedLabel
 
   return (
     <div data-testid="weather-dashboard-panel" className="w-full overflow-hidden rounded-[24px] border border-chatbox-border-primary">
@@ -195,7 +197,7 @@ export function WeatherDashboardPanel({
                 Location
               </Text>
               <Text size="sm" c="dimmed" className="mt-3 whitespace-pre-wrap">
-                {snapshot.lastUpdatedLabel}
+                {locationMetaText}
               </Text>
               <form
                 className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
@@ -222,6 +224,11 @@ export function WeatherDashboardPanel({
                   Update location
                 </Button>
               </form>
+              {snapshot.status === 'unavailable' ? (
+                <Text size="sm" c="dimmed" className="mt-3 whitespace-pre-wrap">
+                  {snapshot.refreshHint}
+                </Text>
+              ) : null}
             </section>
           </div>
         </div>
