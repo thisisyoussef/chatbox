@@ -1,6 +1,4 @@
-import {
-  buildChatBridgeSelectedAppContextPrompt,
-} from '@shared/chatbridge/app-memory'
+import { buildChatBridgeSelectedAppContextPrompt } from '@shared/chatbridge/app-memory'
 import type { ChatBridgeAppRecordSnapshot } from '@shared/chatbridge/app-records'
 import { buildChatBridgeChessReasoningPrompt } from '@shared/chatbridge/reasoning-context'
 import { getModel } from '@shared/models'
@@ -14,6 +12,7 @@ import { t } from 'i18next'
 import { uniqueId } from 'lodash'
 import { createModelDependencies } from '@/adapters'
 import { langsmith } from '@/adapters/langsmith'
+import { applyChatBridgeAppVisionContext } from '@/packages/chatbridge/context'
 import * as settingActions from '@/stores/settingActions'
 import { settingsStore } from '@/stores/settingsStore'
 import type {
@@ -194,6 +193,9 @@ export async function streamText(
   signal?: AbortSignal
 ): Promise<{ result: StreamTextResult; coreMessages: ModelMessage[] }> {
   const { knowledgeBase, webBrowsing, sessionId } = params
+  if (model.isSupportVision()) {
+    params.messages = applyChatBridgeAppVisionContext(params.messages, params.messages)
+  }
   const hasFileOrLink = params.messages.some((m) => m.files?.length || m.links?.length)
 
   const controller = new AbortController()

@@ -9,6 +9,7 @@ import {
 } from '@shared/chatbridge/app-state'
 
 export const CHATBRIDGE_APP_CONTEXT_MESSAGE_PREFIX = 'chatbridge-app-context:'
+export const CHATBRIDGE_APP_VISION_CONTEXT_MESSAGE_PREFIX = 'chatbridge-app-vision-context:'
 const CHATBRIDGE_HOST_MEMORY_VALUE_KEYS = [
   'chatbridgeCompletion',
   'chatbridgeDebateArena',
@@ -73,6 +74,46 @@ function createInjectedAppContextMessage(selection: ChatBridgeSelectedAppContext
           `Summary: ${selection.summaryForModel}` +
           (digest ? `\n${digest}` : '') +
           (screenshot ? `\nScreenshot: ${screenshot}` : ''),
+      },
+    ],
+  }
+}
+
+function getChatBridgeAppVisionContextMessageId(selection: ChatBridgeSelectedAppContext) {
+  return `${CHATBRIDGE_APP_VISION_CONTEXT_MESSAGE_PREFIX}${selection.messageId}:${selection.appInstanceId}`
+}
+
+function createInjectedAppVisionContextMessage(selection: ChatBridgeSelectedAppContext): Message | null {
+  const screenshot = selection.latestScreenshot
+  if (!screenshot) {
+    return null
+  }
+
+  const appLabel = selection.appName?.trim() || selection.appId
+  const lifecycleLabel = selection.lifecycle === 'active' ? 'active' : 'recently completed'
+  const continuityPriority =
+    selection.lifecycle === 'active' ? 'Primary active app screenshot' : 'Recent completed app screenshot'
+  const screenshotDescription = describeChatBridgeAppScreenshot(screenshot)
+
+  return {
+    id: getChatBridgeAppVisionContextMessageId(selection),
+    role: 'user',
+    contentParts: [
+      {
+        type: 'text',
+        text:
+          `ChatBridge visual continuity context:\n` +
+          `This is a host-approved app screenshot for grounding later follow-up, not a new user request.\n` +
+          `Priority: ${continuityPriority}\n` +
+          `App: ${appLabel}\n` +
+          `Lifecycle: ${lifecycleLabel}\n` +
+          `Summary: ${selection.summaryForModel}` +
+          (screenshotDescription ? `\nScreenshot note: ${screenshotDescription}` : '') +
+          `\nUse the image only when the user's follow-up depends on the exact visible app state. Do not infer anything outside this screenshot.`,
+      },
+      {
+        type: 'image',
+        storageKey: screenshot.storageKey,
       },
     ],
   }
@@ -146,5 +187,41 @@ export function applyChatBridgeAppContext(contextMessages: Message[], sourceMess
     ...sanitizedMessages.slice(0, firstSystemIndex + 1),
     ...injectedMessages,
     ...sanitizedMessages.slice(firstSystemIndex + 1),
+  ]
+}
+
+export function applyChatBridgeAppVisionContext(contextMessages: Message[], sourceMessages: Message[]): Message[] {
+  const selected = selectChatBridgeAppContexts(sourceMessages)
+  const preferredSelection =
+    selected.find((selection) => selection.lifecycle === 'active' && selection.latestScreenshot) ??
+    selected.find((selection) => selection.latestScreenshot)
+
+  if (!preferredSelection) {
+    return contextMessages
+  }
+
+  const injectedMessageId = getChatBridgeAppVisionContextMessageId(preferredSelection)
+  if (contextMessages.some((message) => message.id === injectedMessageId)) {
+    return contextMessages
+  }
+
+  const injectedMessage = createInjectedAppVisionContextMessage(preferredSelection)
+  if (!injectedMessage) {
+    return contextMessages
+  }
+
+  const lastSystemIndex = contextMessages.reduce(
+    (lastIndex, message, index) => (message.role === 'system' ? index : lastIndex),
+    -1
+  )
+
+  if (lastSystemIndex === -1) {
+    return [injectedMessage, ...contextMessages]
+  }
+
+  return [
+    ...contextMessages.slice(0, lastSystemIndex + 1),
+    injectedMessage,
+    ...contextMessages.slice(lastSystemIndex + 1),
   ]
 }

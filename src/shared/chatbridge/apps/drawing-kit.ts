@@ -104,12 +104,160 @@ function normalizeCaption(value?: string) {
   return trimmed ? trimmed : undefined
 }
 
+function formatCount(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${pluralize(count, singular, plural)}`
+}
+
 function escapeSvgText(value: string) {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
 }
 
 function encodeSvgDataUrl(svg: string) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+function parseHexColor(value: string) {
+  const normalized = value.trim().toLowerCase()
+  const expanded =
+    normalized.length === 4 && normalized.startsWith('#')
+      ? `#${normalized
+          .slice(1)
+          .split('')
+          .map((segment) => `${segment}${segment}`)
+          .join('')}`
+      : normalized
+
+  if (!expanded.startsWith('#') || expanded.length !== 7) {
+    return null
+  }
+
+  const numeric = Number.parseInt(expanded.slice(1), 16)
+  if (!Number.isFinite(numeric)) {
+    return null
+  }
+
+  return {
+    r: (numeric >> 16) & 0xff,
+    g: (numeric >> 8) & 0xff,
+    b: numeric & 0xff,
+  }
+}
+
+function describeDrawingKitColor(value: string) {
+  const rgb = parseHexColor(value)
+  if (!rgb) {
+    return 'colored'
+  }
+
+  const { r, g, b } = rgb
+  if (r > 235 && g > 235 && b > 235) {
+    return 'white'
+  }
+  if (r < 40 && g < 40 && b < 40) {
+    return 'black'
+  }
+  if (r > 220 && g > 185 && b < 120) {
+    return 'yellow'
+  }
+  if (r > 220 && g > 120 && b < 95) {
+    return 'orange'
+  }
+  if (b > r + 30 && b > g + 20) {
+    return 'blue'
+  }
+  if (g > r + 20 && g > b + 20) {
+    return 'green'
+  }
+  if (r > g + 20 && r > b + 20) {
+    return 'red'
+  }
+  if (r > 120 && b > 120 && g < 140) {
+    return 'purple'
+  }
+  return 'colored'
+}
+
+function describeDrawingKitRegion(x: number, y: number) {
+  const column = x < 0.33 ? 'left' : x > 0.67 ? 'right' : 'center'
+  const row = y < 0.33 ? 'upper' : y > 0.67 ? 'lower' : 'middle'
+
+  if (row === 'middle' && column === 'center') {
+    return 'center'
+  }
+  if (row === 'middle') {
+    return `${column} side`
+  }
+  if (column === 'center') {
+    return `${row} center`
+  }
+  return `${row}-${column}`
+}
+
+function describeDrawingKitStrokeShape(points: DrawingKitPreviewPoint[]) {
+  const start = points[0]
+  const end = points.at(-1) ?? start
+  const deltaX = end.x - start.x
+  const deltaY = end.y - start.y
+  const distance = Math.hypot(deltaX, deltaY)
+  const absoluteX = Math.abs(deltaX)
+  const absoluteY = Math.abs(deltaY)
+  const lengthLabel = distance > 0.42 ? 'long' : distance > 0.22 ? 'medium' : 'short'
+
+  if (absoluteX > absoluteY * 1.8) {
+    return `${lengthLabel} horizontal`
+  }
+  if (absoluteY > absoluteX * 1.8) {
+    return `${lengthLabel} vertical`
+  }
+
+  return `${lengthLabel} ${deltaY >= 0 ? 'downward' : 'upward'} diagonal`
+}
+
+function describeDrawingKitLineMark(mark: Extract<DrawingKitPreviewMark, { kind: 'line' }>) {
+  const centroid = mark.points.reduce(
+    (sum, point) => ({
+      x: sum.x + point.x / mark.points.length,
+      y: sum.y + point.y / mark.points.length,
+    }),
+    { x: 0, y: 0 }
+  )
+  const region = describeDrawingKitRegion(centroid.x, centroid.y)
+  const color = describeDrawingKitColor(mark.color)
+  const tool = mark.tool === 'spray' ? 'spray stroke' : 'brush stroke'
+
+  return `${describeDrawingKitStrokeShape(mark.points)} ${color} ${tool} near the ${region}`
+}
+
+function describeDrawingKitStampMark(mark: Extract<DrawingKitPreviewMark, { kind: 'stamp' }>) {
+  const color = describeDrawingKitColor(mark.color)
+  const region = describeDrawingKitRegion(mark.x, mark.y)
+  return `${color} ${mark.stamp} stamp near the ${region}`
+}
+
+export function describeDrawingKitVisibleBoard(snapshot: DrawingKitAppSnapshot) {
+  const visibleMarks = clampDrawingKitPreviewMarks(snapshot.previewMarks)
+  if (visibleMarks.length === 0 && !snapshot.caption) {
+    return null
+  }
+
+  const markDescriptions = visibleMarks.slice(-3).map((mark) => {
+    if (mark.kind === 'line') {
+      return describeDrawingKitLineMark(mark)
+    }
+    return describeDrawingKitStampMark(mark)
+  })
+  const hiddenCount = Math.max(0, visibleMarks.length - markDescriptions.length)
+  const captionSentence = snapshot.caption ? ` Caption text reads "${snapshot.caption}".` : ''
+  const stickerSentence =
+    snapshot.stickerCount > 0 ? ` ${formatCount(snapshot.stickerCount, 'sticker')} are visible on the board.` : ''
+  const visibleDrawingSentence =
+    markDescriptions.length > 0
+      ? `Visible drawing: ${markDescriptions.join('; ')}${
+          hiddenCount > 0 ? `, plus ${formatCount(hiddenCount, 'earlier mark')}` : ''
+        }.`
+      : 'Visible drawing: no preserved marks remain, but the board still carries a caption.'
+
+  return `${visibleDrawingSentence}${stickerSentence}${captionSentence}`.trim()
 }
 
 function pickDrawingKitPromptPack(request?: string) {
@@ -404,10 +552,7 @@ export function eraseLastDrawingKitPreviewMark(
   })
 }
 
-export function clearDrawingKitPreviewMarks(
-  snapshot: DrawingKitAppSnapshot,
-  options: { lastUpdatedAt?: number } = {}
-) {
+export function clearDrawingKitPreviewMarks(snapshot: DrawingKitAppSnapshot, options: { lastUpdatedAt?: number } = {}) {
   return rebuildDrawingKitSnapshot(snapshot, {
     previewMarks: [],
     status: 'blank',
