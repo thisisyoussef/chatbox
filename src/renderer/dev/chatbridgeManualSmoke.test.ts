@@ -196,6 +196,43 @@ describe('chatbridge manual smoke tracing', () => {
     await expect(finishChatBridgeManualSmokeTrace('manual-run-1', 'passed')).resolves.toBe(true)
   })
 
+  it('marks the Flashcard Studio Drive resume fixture as a supported SC-007A smoke path', async () => {
+    expect(getChatBridgeManualSmokeFixtureMode('flashcard-studio-drive-resume')).toMatchObject({
+      support: 'supported',
+      descriptor: expect.objectContaining({
+        slug: 'chatbridge-flashcard-studio-drive-resume',
+        storyId: 'SC-007A',
+      }),
+    })
+
+    const fixture = getChatBridgeLiveSeedFixtures().find((candidate) => candidate.id === 'flashcard-studio-drive-resume')
+    expect(fixture).toBeTruthy()
+    if (!fixture) {
+      return
+    }
+
+    await expect(startChatBridgeManualSmokeTrace(fixture, 'seeded-session-flashcard-drive')).resolves.toMatchObject({
+      status: 'started',
+      traceId: 'manual-run-1',
+      traceLabel: expect.stringContaining('chatbridge.manual_smoke.chatbridge-flashcard-studio-drive-resume'),
+      run: {
+        fixtureId: 'flashcard-studio-drive-resume',
+      },
+    })
+
+    expect(mocks.startRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          fixtureId: 'flashcard-studio-drive-resume',
+          storyId: 'SC-007A',
+        }),
+        tags: expect.arrayContaining(['sc-007a', 'seed-lab']),
+      })
+    )
+
+    await expect(finishChatBridgeManualSmokeTrace('manual-run-1', 'passed')).resolves.toBe(true)
+  })
+
   it('marks the Weather Dashboard fixture as a supported CB-510 smoke path', async () => {
     expect(getChatBridgeManualSmokeFixtureMode('weather-dashboard')).toMatchObject({
       support: 'supported',

@@ -33,6 +33,7 @@ vi.mock('@/stores/chatStore', () => ({
 import {
   createChatBridgeRuntimeCrashRecoveryContract,
   createDrawingKitAppSnapshot,
+  createFlashcardStudioAppSnapshot,
   readChatBridgeDegradedCompletion,
 } from '@shared/chatbridge'
 import {
@@ -50,6 +51,7 @@ import {
   applyReviewedAppLaunchBootstrapToSession,
   applyReviewedAppLaunchBridgeEventToSession,
   applyReviewedAppLaunchBridgeReadyToSession,
+  applyReviewedAppLaunchHostSnapshotToSession,
   applyReviewedAppLaunchRecoveryToSession,
   persistReviewedAppLaunchBridgeEvent,
   readChatBridgeReviewedAppLaunch,
@@ -222,6 +224,44 @@ function createWeatherDashboardLaunchToolCallPart(): MessageToolCallPart {
           summary: 'Prepared the reviewed Weather Dashboard request for the host-owned launch path.',
           request: 'Open Weather Dashboard for Chicago and show the forecast.',
           location: 'Chicago',
+        },
+      },
+    },
+  }
+}
+
+function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
+  return {
+    type: 'tool-call',
+    state: 'result',
+    toolCallId: 'tool-reviewed-launch-flashcard-drive-1',
+    toolName: 'flashcard_studio_open',
+    args: {
+      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+    },
+    result: {
+      kind: 'chatbridge.host.tool.record.v1',
+      toolName: 'flashcard_studio_open',
+      appId: 'flashcard-studio',
+      sessionId: 'session-reviewed-launch-flashcard-drive-1',
+      schemaVersion: CHATBRIDGE_HOST_TOOL_SCHEMA_VERSION,
+      executionAuthority: 'host',
+      effect: 'read',
+      retryClassification: 'safe',
+      invocation: {
+        args: {
+          request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+        },
+      },
+      outcome: {
+        status: 'success',
+        result: {
+          appId: 'flashcard-studio',
+          appName: 'Flashcard Studio',
+          capability: 'open',
+          launchReady: true,
+          summary: 'Prepared the reviewed Flashcard Studio Drive resume request for the host-owned launch path.',
+          request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
         },
       },
     },
@@ -877,5 +917,138 @@ describe('reviewed app launch adoption', () => {
       'chatbridge-app',
       expect.stringMatching(/^data:image\/svg\+xml;charset=utf-8,/)
     )
+  })
+
+  it('records host-authored Flashcard Drive snapshots without requiring the reviewed runtime bridge token', () => {
+    const assistantMessage = createMessage('assistant')
+    assistantMessage.id = 'assistant-reviewed-launch-flashcard-drive-1'
+    assistantMessage.contentParts = upsertReviewedAppLaunchParts([createFlashcardStudioLaunchToolCallPart()])
+
+    const launchPart = assistantMessage.contentParts.find((part): part is MessageAppPart => part.type === 'app')
+    if (!launchPart) {
+      throw new Error('Expected a reviewed Flashcard Studio launch part.')
+    }
+
+    const session: Session = {
+      id: 'session-reviewed-launch-flashcard-drive-1',
+      name: 'Reviewed Flashcard Drive launch session',
+      messages: [assistantMessage],
+      settings: {},
+    }
+
+    const bootstrapped = applyReviewedAppLaunchBootstrapToSession(session, {
+      messageId: 'assistant-reviewed-launch-flashcard-drive-1',
+      part: launchPart,
+      bridgeSessionId: 'bridge-session-reviewed-flashcard-drive-1',
+      now: () => 40_000,
+      createId: () => 'event-created-reviewed-flashcard-drive-1',
+    })
+
+    const reconnectSnapshot = createFlashcardStudioAppSnapshot({
+      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+      deckTitle: 'Biology review',
+      cards: [
+        {
+          cardId: 'card-1',
+          prompt: 'What does the mitochondria do?',
+          answer: 'It helps the cell produce energy.',
+        },
+      ],
+      selectedCardId: 'card-1',
+      drive: {
+        status: 'connecting',
+        statusText: 'Connecting Drive',
+        detail: 'Waiting for Google Drive permission so the host can save and reopen this deck.',
+        recentDecks: [
+          {
+            deckId: 'drive-deck-biology-review',
+            deckName: 'Biology review.chatbridge-flashcards.json',
+            modifiedAt: 1_717_000_100_000,
+          },
+        ],
+      },
+      lastAction: 'updated-card',
+      lastUpdatedAt: 41_000,
+    })
+
+    const authRequested = applyReviewedAppLaunchHostSnapshotToSession(bootstrapped, {
+      messageId: 'assistant-reviewed-launch-flashcard-drive-1',
+      part: getLaunchPart(bootstrapped, 'assistant-reviewed-launch-flashcard-drive-1'),
+      snapshot: reconnectSnapshot,
+      eventKind: 'auth.requested',
+      payload: {
+        action: 'drive.connect',
+      },
+      summaryForModel: reconnectSnapshot.summary,
+      now: () => 41_000,
+    })
+
+    const authRequestedPart = getLaunchPart(authRequested, 'assistant-reviewed-launch-flashcard-drive-1')
+    expect(authRequestedPart).toMatchObject({
+      lifecycle: 'active',
+      description: 'Flashcard Studio is waiting on a host-managed auth step inside the thread.',
+      snapshot: {
+        drive: {
+          status: 'connecting',
+          statusText: 'Connecting Drive',
+        },
+      },
+    })
+    expect(authRequested.chatBridgeAppRecords?.events.map((event) => event.kind)).toEqual([
+      'instance.created',
+      'bridge.ready',
+      'auth.requested',
+    ])
+
+    const connectedSnapshot = createFlashcardStudioAppSnapshot({
+      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+      deckTitle: 'Biology review',
+      cards: reconnectSnapshot.cards,
+      selectedCardId: 'card-1',
+      drive: {
+        status: 'connected',
+        statusText: 'Drive connected',
+        detail: 'Loaded "Biology review.chatbridge-flashcards.json" from the saved Drive deck list.',
+        connectedAs: 'student@example.com',
+        recentDecks: reconnectSnapshot.drive.recentDecks,
+        lastSavedDeckId: 'drive-deck-biology-review',
+        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        lastSavedAt: 1_717_000_300_000,
+      },
+      lastAction: 'updated-card',
+      lastUpdatedAt: 42_000,
+    })
+
+    const linked = applyReviewedAppLaunchHostSnapshotToSession(authRequested, {
+      messageId: 'assistant-reviewed-launch-flashcard-drive-1',
+      part: authRequestedPart,
+      snapshot: connectedSnapshot,
+      eventKind: 'auth.linked',
+      payload: {
+        action: 'drive.connect',
+        outcome: 'success',
+      },
+      summaryForModel: connectedSnapshot.summary,
+      now: () => 42_000,
+    })
+
+    const linkedPart = getLaunchPart(linked, 'assistant-reviewed-launch-flashcard-drive-1')
+    expect(linkedPart).toMatchObject({
+      lifecycle: 'active',
+      description: 'Flashcard Studio linked a host-managed auth grant and stayed inside the thread.',
+      snapshot: {
+        drive: {
+          status: 'connected',
+          statusText: 'Drive connected',
+          lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        },
+      },
+    })
+    expect(linked.chatBridgeAppRecords?.events.map((event) => event.kind)).toEqual([
+      'instance.created',
+      'bridge.ready',
+      'auth.requested',
+      'auth.linked',
+    ])
   })
 })

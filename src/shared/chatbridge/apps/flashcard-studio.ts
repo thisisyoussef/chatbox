@@ -10,6 +10,8 @@ const MAX_FLASHCARD_STUDIO_PROMPT_LENGTH = 160
 const MAX_FLASHCARD_STUDIO_ANSWER_LENGTH = 320
 const MAX_FLASHCARD_STUDIO_PREVIEW_CARDS = 4
 const MAX_FLASHCARD_STUDIO_WEAK_PREVIEW_CARDS = 3
+const MAX_FLASHCARD_STUDIO_RECENT_DECKS = 5
+const MAX_FLASHCARD_STUDIO_DRIVE_DECK_NAME_LENGTH = 120
 
 export const FlashcardStudioDeckStatusSchema = z.enum(['empty', 'editing', 'complete'])
 export type FlashcardStudioDeckStatus = z.infer<typeof FlashcardStudioDeckStatusSchema>
@@ -68,6 +70,41 @@ export const FlashcardStudioStudyCountsSchema = z
   .strict()
 export type FlashcardStudioStudyCounts = z.infer<typeof FlashcardStudioStudyCountsSchema>
 
+export const FlashcardStudioDriveStatusSchema = z.enum([
+  'needs-auth',
+  'connecting',
+  'connected',
+  'saving',
+  'loading',
+  'error',
+])
+export type FlashcardStudioDriveStatus = z.infer<typeof FlashcardStudioDriveStatusSchema>
+
+export const FlashcardStudioDriveRecentDeckSchema = z
+  .object({
+    deckId: z.string().trim().min(1),
+    deckName: z.string().trim().min(1).max(MAX_FLASHCARD_STUDIO_DRIVE_DECK_NAME_LENGTH),
+    modifiedAt: z.number().int().nonnegative(),
+    lastOpenedAt: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+export type FlashcardStudioDriveRecentDeck = z.infer<typeof FlashcardStudioDriveRecentDeckSchema>
+
+export const FlashcardStudioDriveStateSchema = z
+  .object({
+    provider: z.literal('google-drive').default('google-drive'),
+    status: FlashcardStudioDriveStatusSchema.default('needs-auth'),
+    statusText: z.string().trim().min(1),
+    detail: z.string().trim().min(1),
+    connectedAs: z.string().trim().min(1).optional(),
+    recentDecks: z.array(FlashcardStudioDriveRecentDeckSchema).max(MAX_FLASHCARD_STUDIO_RECENT_DECKS).default([]),
+    lastSavedDeckId: z.string().trim().min(1).optional(),
+    lastSavedDeckName: z.string().trim().min(1).max(MAX_FLASHCARD_STUDIO_DRIVE_DECK_NAME_LENGTH).optional(),
+    lastSavedAt: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+export type FlashcardStudioDriveState = z.infer<typeof FlashcardStudioDriveStateSchema>
+
 export const FlashcardStudioAppSnapshotSchema = z
   .object({
     schemaVersion: z.literal(FLASHCARD_STUDIO_APP_SNAPSHOT_SCHEMA_VERSION),
@@ -87,6 +124,13 @@ export const FlashcardStudioAppSnapshotSchema = z
       easy: 0,
       medium: 0,
       hard: 0,
+    }),
+    drive: FlashcardStudioDriveStateSchema.default({
+      provider: 'google-drive',
+      status: 'needs-auth',
+      statusText: 'Drive not connected',
+      detail: 'Connect Drive to save this deck or reopen a recent one.',
+      recentDecks: [],
     }),
     lastAction: FlashcardStudioAuthoringActionSchema,
     statusText: z.string().trim().min(1),
@@ -234,6 +278,18 @@ export const FlashcardStudioAppSnapshotSchema = z
         message: 'studyPosition must advance to cardCount when studyStatus is complete.',
       })
     }
+
+    const seenDeckIds = new Set<string>()
+    for (const recentDeck of value.drive.recentDecks) {
+      if (seenDeckIds.has(recentDeck.deckId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['drive', 'recentDecks'],
+          message: `Duplicate recent deck "${recentDeck.deckId}" is not allowed.`,
+        })
+      }
+      seenDeckIds.add(recentDeck.deckId)
+    }
   })
 export type FlashcardStudioAppSnapshot = z.infer<typeof FlashcardStudioAppSnapshotSchema>
 
@@ -248,6 +304,7 @@ type CreateFlashcardStudioAppSnapshotInput = {
   studyPosition?: number
   revealedCardId?: string
   studyMarks?: FlashcardStudioStudyMark[]
+  drive?: Partial<FlashcardStudioDriveState>
   lastAction?: FlashcardStudioAuthoringAction
   lastUpdatedAt?: number
 }
@@ -281,6 +338,10 @@ function summarizeCardPrompt(prompt: string) {
 
 function normalizeDeckTitle(value?: string) {
   return clampLabel(normalizeOptionalWhitespace(value) ?? 'Study deck', MAX_FLASHCARD_STUDIO_DECK_TITLE_LENGTH)
+}
+
+function normalizeDriveDeckName(value?: string) {
+  return clampLabel(normalizeOptionalWhitespace(value) ?? 'Saved flashcard deck', MAX_FLASHCARD_STUDIO_DRIVE_DECK_NAME_LENGTH)
 }
 
 function normalizeCard(card: FlashcardStudioCard): FlashcardStudioCard {
@@ -321,6 +382,125 @@ function buildStudyCounts(studyMarks: FlashcardStudioStudyMark[]): FlashcardStud
     }),
     { easy: 0, medium: 0, hard: 0 }
   )
+}
+
+function normalizeDriveRecentDecks(recentDecks: FlashcardStudioDriveRecentDeck[] | undefined) {
+  const deduped: FlashcardStudioDriveRecentDeck[] = []
+  const seenDeckIds = new Set<string>()
+
+  for (const recentDeck of recentDecks ?? []) {
+    const normalizedDeck = FlashcardStudioDriveRecentDeckSchema.parse({
+      deckId: normalizeWhitespace(recentDeck.deckId),
+      deckName: normalizeDriveDeckName(recentDeck.deckName),
+      modifiedAt: recentDeck.modifiedAt,
+      lastOpenedAt: recentDeck.lastOpenedAt,
+    })
+
+    if (seenDeckIds.has(normalizedDeck.deckId)) {
+      continue
+    }
+
+    seenDeckIds.add(normalizedDeck.deckId)
+    deduped.push(normalizedDeck)
+  }
+
+  return deduped
+    .sort((left, right) => {
+      const rightSort = right.lastOpenedAt ?? right.modifiedAt
+      const leftSort = left.lastOpenedAt ?? left.modifiedAt
+      return rightSort - leftSort
+    })
+    .slice(0, MAX_FLASHCARD_STUDIO_RECENT_DECKS)
+}
+
+function buildFlashcardStudioDriveStatusText(input: {
+  status: FlashcardStudioDriveStatus
+  recentDecks: FlashcardStudioDriveRecentDeck[]
+}) {
+  switch (input.status) {
+    case 'connecting':
+      return 'Connecting Drive'
+    case 'connected':
+      return 'Drive connected'
+    case 'saving':
+      return 'Saving to Drive'
+    case 'loading':
+      return 'Loading from Drive'
+    case 'error':
+      return 'Drive action blocked'
+    case 'needs-auth':
+    default:
+      return input.recentDecks.length > 0 ? 'Reconnect Drive to resume' : 'Drive not connected'
+  }
+}
+
+function buildFlashcardStudioDriveDetail(input: {
+  status: FlashcardStudioDriveStatus
+  recentDecks: FlashcardStudioDriveRecentDeck[]
+  lastSavedDeckName?: string
+  lastSavedAt?: number
+  connectedAs?: string
+}) {
+  const latestDeckName = input.lastSavedDeckName ?? input.recentDecks[0]?.deckName
+
+  switch (input.status) {
+    case 'connecting':
+      return 'Waiting for Google Drive permission so the host can save and reopen this deck.'
+    case 'connected':
+      return latestDeckName
+        ? `Drive is ready for "${latestDeckName}" and future save or resume actions stay host-owned.`
+        : input.connectedAs
+          ? `Drive is connected for ${input.connectedAs} and ready to save this deck.`
+          : 'Drive is connected and ready to save or reopen a deck.'
+    case 'saving':
+      return latestDeckName
+        ? `Saving "${latestDeckName}" to Drive through the host-managed connector.`
+        : 'Saving the current deck to Drive through the host-managed connector.'
+    case 'loading':
+      return latestDeckName
+        ? `Loading "${latestDeckName}" from the saved Drive deck list.`
+        : 'Loading the selected deck from Drive.'
+    case 'error':
+      return latestDeckName
+        ? `Drive needs attention before the host can keep "${latestDeckName}" in sync.`
+        : 'Drive needs attention before save or resume can continue.'
+    case 'needs-auth':
+    default:
+      return latestDeckName
+        ? `Reconnect Drive to reopen "${latestDeckName}" or save new progress from this deck.`
+        : 'Connect Drive to save this deck or reopen a recent one.'
+  }
+}
+
+function normalizeDriveState(input: Partial<FlashcardStudioDriveState> | undefined): FlashcardStudioDriveState {
+  const recentDecks = normalizeDriveRecentDecks(input?.recentDecks)
+  const status = input?.status ?? 'needs-auth'
+  const lastSavedDeckName = input?.lastSavedDeckName ? normalizeDriveDeckName(input.lastSavedDeckName) : undefined
+
+  return FlashcardStudioDriveStateSchema.parse({
+    provider: 'google-drive',
+    status,
+    statusText:
+      normalizeOptionalWhitespace(input?.statusText) ??
+      buildFlashcardStudioDriveStatusText({
+        status,
+        recentDecks,
+      }),
+    detail:
+      normalizeOptionalWhitespace(input?.detail) ??
+      buildFlashcardStudioDriveDetail({
+        status,
+        recentDecks,
+        lastSavedDeckName,
+        lastSavedAt: input?.lastSavedAt,
+        connectedAs: normalizeOptionalWhitespace(input?.connectedAs),
+      }),
+    connectedAs: normalizeOptionalWhitespace(input?.connectedAs),
+    recentDecks,
+    lastSavedDeckId: normalizeOptionalWhitespace(input?.lastSavedDeckId),
+    lastSavedDeckName,
+    lastSavedAt: typeof input?.lastSavedAt === 'number' ? input.lastSavedAt : undefined,
+  })
 }
 
 function getWeakStudyPrompts(cards: FlashcardStudioCard[], studyMarks: FlashcardStudioStudyMark[]) {
@@ -539,6 +719,7 @@ function buildFlashcardStudioSummary(snapshot: {
   studyPosition: number
   studyMarks: FlashcardStudioStudyMark[]
   studyCounts: FlashcardStudioStudyCounts
+  drive: FlashcardStudioDriveState
   lastAction: FlashcardStudioAuthoringAction
 }) {
   const selectedCard = snapshot.cards.find((card) => card.cardId === snapshot.selectedCardId) ?? null
@@ -553,13 +734,25 @@ function buildFlashcardStudioSummary(snapshot: {
     snapshot.studyCounts,
     snapshot.cardCount
   )
+  const driveSentence =
+    snapshot.drive.status === 'connected'
+      ? snapshot.drive.lastSavedDeckName
+        ? `Drive is connected for "${snapshot.drive.lastSavedDeckName}".`
+        : 'Drive is connected for save and resume.'
+      : snapshot.drive.status === 'needs-auth' && snapshot.drive.recentDecks.length > 0
+        ? `Drive resume is available for ${snapshot.drive.recentDecks.length} saved deck${snapshot.drive.recentDecks.length === 1 ? '' : 's'} after reconnect.`
+        : snapshot.drive.status === 'error'
+          ? `Drive needs attention: ${snapshot.drive.detail}`
+          : null
 
   if (snapshot.cardCount === 0) {
     const base =
       snapshot.status === 'complete'
         ? `Flashcard Studio returned the deck "${snapshot.deckTitle}" to chat with no cards created.`
         : `Flashcard Studio is open on the deck "${snapshot.deckTitle}" with no cards yet.`
-    return normalizeWhitespace(`${base} ${actionSentence} The empty state is explicit so later chat does not imply study progress.`)
+    return normalizeWhitespace(
+      `${base} ${actionSentence} ${driveSentence ?? ''} The empty state is explicit so later chat does not imply study progress.`
+    )
   }
 
   if (snapshot.mode === 'study') {
@@ -584,7 +777,9 @@ function buildFlashcardStudioSummary(snapshot: {
           ? 'No hard review cards are currently flagged.'
           : 'No confidence marks recorded yet.'
 
-    return normalizeWhitespace(`${base} ${progressSentence} ${currentCardSentence} ${weakSentence} ${actionSentence}`)
+    return normalizeWhitespace(
+      `${base} ${progressSentence} ${currentCardSentence} ${weakSentence} ${actionSentence} ${driveSentence ?? ''}`
+    )
   }
 
   const previewCards = snapshot.cards.slice(0, MAX_FLASHCARD_STUDIO_PREVIEW_CARDS).map((card) => summarizeCardPrompt(card.prompt))
@@ -597,7 +792,7 @@ function buildFlashcardStudioSummary(snapshot: {
       ? `Flashcard Studio returned the deck "${snapshot.deckTitle}" to chat with ${snapshot.cardCount} cards.`
       : `Flashcard Studio is actively authoring the deck "${snapshot.deckTitle}" with ${snapshot.cardCount} cards.`
 
-  return normalizeWhitespace(`${base} ${previewSentence} ${selectedSentence} ${actionSentence}`)
+  return normalizeWhitespace(`${base} ${previewSentence} ${selectedSentence} ${actionSentence} ${driveSentence ?? ''}`)
 }
 
 function buildFlashcardStudioResumeHint(snapshot: {
@@ -607,25 +802,31 @@ function buildFlashcardStudioResumeHint(snapshot: {
   studyStatus: FlashcardStudioStudyStatus
   studyPosition: number
   studyMarks: FlashcardStudioStudyMark[]
+  drive: FlashcardStudioDriveState
 }) {
+  const reconnectHint =
+    snapshot.drive.status === 'needs-auth' && snapshot.drive.recentDecks.length > 0
+      ? ` Reconnect Drive to reopen "${snapshot.drive.recentDecks[0]?.deckName}".`
+      : ''
+
   if (snapshot.cardCount === 0) {
-    return `Reopen Flashcard Studio to add the first card to "${snapshot.deckTitle}".`
+    return `Reopen Flashcard Studio to add the first card to "${snapshot.deckTitle}".${reconnectHint}`
   }
 
   if (snapshot.mode === 'study') {
     if (snapshot.studyStatus === 'complete') {
-      return `Reopen Flashcard Studio to review the hard cards in "${snapshot.deckTitle}" or keep editing the deck.`
+      return `Reopen Flashcard Studio to review the hard cards in "${snapshot.deckTitle}" or keep editing the deck.${reconnectHint}`
     }
 
     const currentLabel = Math.min(snapshot.studyPosition + 1, snapshot.cardCount)
-    return `Reopen Flashcard Studio to continue studying "${snapshot.deckTitle}" at card ${currentLabel} of ${snapshot.cardCount}.`
+    return `Reopen Flashcard Studio to continue studying "${snapshot.deckTitle}" at card ${currentLabel} of ${snapshot.cardCount}.${reconnectHint}`
   }
 
   if (snapshot.studyMarks.length > 0) {
-    return `Reopen Flashcard Studio to keep editing "${snapshot.deckTitle}" or resume the current study round later.`
+    return `Reopen Flashcard Studio to keep editing "${snapshot.deckTitle}" or resume the current study round later.${reconnectHint}`
   }
 
-  return `Reopen Flashcard Studio to keep editing "${snapshot.deckTitle}" or start study mode later.`
+  return `Reopen Flashcard Studio to keep editing "${snapshot.deckTitle}" or start study mode later.${reconnectHint}`
 }
 
 export function getFlashcardStudioSummary(snapshot: FlashcardStudioAppSnapshot) {
@@ -640,6 +841,7 @@ export function createFlashcardStudioAppSnapshot(
   const lastAction = input.lastAction ?? 'initialized'
   const status = input.status ?? (cards.length === 0 ? 'empty' : 'editing')
   const selectedCardId = cards.some((card) => card.cardId === input.selectedCardId) ? input.selectedCardId : undefined
+  const drive = normalizeDriveState(input.drive)
   const studyState = deriveStudyState({
     cards,
     mode: input.mode,
@@ -664,6 +866,7 @@ export function createFlashcardStudioAppSnapshot(
     revealedCardId: studyState.revealedCardId,
     studyMarks: studyState.studyMarks,
     studyCounts: studyState.studyCounts,
+    drive,
     lastAction,
     statusText: buildFlashcardStudioStatusText({
       status,
@@ -685,6 +888,7 @@ export function createFlashcardStudioAppSnapshot(
       studyPosition: studyState.studyPosition,
       studyMarks: studyState.studyMarks,
       studyCounts: studyState.studyCounts,
+      drive,
       lastAction,
     }),
     resumeHint: buildFlashcardStudioResumeHint({
@@ -694,6 +898,7 @@ export function createFlashcardStudioAppSnapshot(
       studyStatus: studyState.studyStatus,
       studyPosition: studyState.studyPosition,
       studyMarks: studyState.studyMarks,
+      drive,
     }),
     lastUpdatedAt: input.lastUpdatedAt ?? Date.now(),
   })
@@ -711,6 +916,28 @@ export function createInitialFlashcardStudioAppSnapshot(
     studyStatus: 'idle',
     lastAction: 'initialized',
     lastUpdatedAt: input.updatedAt ?? Date.now(),
+  })
+}
+
+export function updateFlashcardStudioAppSnapshot(
+  snapshot: FlashcardStudioAppSnapshot,
+  input: Partial<CreateFlashcardStudioAppSnapshotInput>
+): FlashcardStudioAppSnapshot {
+  return createFlashcardStudioAppSnapshot({
+    request: snapshot.request,
+    deckTitle: snapshot.deckTitle,
+    status: snapshot.status,
+    mode: snapshot.mode,
+    studyStatus: snapshot.studyStatus,
+    cards: snapshot.cards,
+    selectedCardId: snapshot.selectedCardId,
+    studyPosition: snapshot.studyPosition,
+    revealedCardId: snapshot.revealedCardId,
+    studyMarks: snapshot.studyMarks,
+    drive: snapshot.drive,
+    lastAction: snapshot.lastAction,
+    lastUpdatedAt: snapshot.lastUpdatedAt,
+    ...input,
   })
 }
 

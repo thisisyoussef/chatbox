@@ -37,4 +37,21 @@ describe('default reviewed app catalog', () => {
       'weather-dashboard',
     ])
   })
+
+  it('marks Flashcard Studio as the oauth reviewed app with host-owned Drive permissions', () => {
+    const flashcardStudio = getDefaultReviewedAppCatalogEntries().find(
+      (entry) => entry.manifest.appId === 'flashcard-studio'
+    )
+
+    expect(flashcardStudio).toMatchObject({
+      manifest: {
+        authMode: 'oauth',
+        permissions: expect.arrayContaining([
+          expect.objectContaining({ id: 'drive.read', required: true }),
+          expect.objectContaining({ id: 'drive.write', required: true }),
+        ]),
+        supportedEvents: expect.arrayContaining(['app.requestAuth']),
+      },
+    })
+  })
 })

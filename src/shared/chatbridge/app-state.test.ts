@@ -151,6 +151,7 @@ describe('chatbridge app state helpers', () => {
     })
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Deck: Science review')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Cards: 2')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Drive: Drive not connected')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('What does the mitochondria do?')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('What is photosynthesis?')
     expect(formatChatBridgeAppStateDigest(digest)).not.toContain('Plants use sunlight to make food.')
@@ -202,6 +203,45 @@ describe('chatbridge app state helpers', () => {
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Confidence: 1 easy, 0 medium, 1 hard')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Needs review: What is photosynthesis?')
     expect(formatChatBridgeAppStateDigest(digest)).not.toContain('Plants use sunlight to make food.')
+  })
+
+  it('includes bounded Drive save and resume metadata for flashcard snapshots', () => {
+    const digest = buildChatBridgeAppStateDigest(
+      createPart({
+        appId: 'flashcard-studio',
+        appName: 'Flashcard Studio',
+        snapshot: createFlashcardStudioAppSnapshot({
+          deckTitle: 'Science review',
+          cards: [
+            {
+              cardId: 'card-1',
+              prompt: 'What does the mitochondria do?',
+              answer: 'It helps the cell produce energy.',
+            },
+          ],
+          selectedCardId: 'card-1',
+          drive: {
+            status: 'needs-auth',
+            recentDecks: [
+              {
+                deckId: 'drive-deck-science-review',
+                deckName: 'Science review.chatbridge-flashcards.json',
+                modifiedAt: 1_717_000_100_000,
+              },
+            ],
+            lastSavedDeckId: 'drive-deck-science-review',
+            lastSavedDeckName: 'Science review.chatbridge-flashcards.json',
+            lastSavedAt: 1_717_000_100_000,
+          },
+          lastAction: 'updated-card',
+          lastUpdatedAt: 3_200,
+        }),
+      })
+    )
+
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Drive: Reconnect Drive to resume')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Saved deck: Science review.chatbridge-flashcards.json')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Recent decks: 1')
   })
 
   it('stores only the latest bounded set of app-linked screenshots', () => {

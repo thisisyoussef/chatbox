@@ -230,7 +230,7 @@ const REVIEWED_APP_CATALOG_DESCRIPTORS: ReviewedAppCatalogDescriptor[] = [
         protocolVersion: 1,
         origin: 'https://apps.example.com',
         uiEntry: 'https://apps.example.com/flashcard-studio',
-        authMode: 'none',
+        authMode: 'oauth',
         permissions: [
           {
             id: 'session.context.read',
@@ -238,6 +238,20 @@ const REVIEWED_APP_CATALOG_DESCRIPTORS: ReviewedAppCatalogDescriptor[] = [
             access: 'read',
             required: true,
             purpose: 'Open Flashcard Studio with the bounded study request inside the host-owned shell.',
+          },
+          {
+            id: 'drive.read',
+            resource: 'drive',
+            access: 'read',
+            required: true,
+            purpose: 'Reopen app-managed Flashcard Studio deck files through the host-owned Drive connector.',
+          },
+          {
+            id: 'drive.write',
+            resource: 'drive',
+            access: 'write',
+            required: true,
+            purpose: 'Save Flashcard Studio deck progress through the host-owned Drive connector.',
           },
         ],
         toolSchemas: [
@@ -271,7 +285,15 @@ const REVIEWED_APP_CATALOG_DESCRIPTORS: ReviewedAppCatalogDescriptor[] = [
             },
           },
         ],
-        supportedEvents: ['host.init', 'host.invokeTool', 'app.ready', 'app.state', 'app.complete', 'app.error'],
+        supportedEvents: [
+          'host.init',
+          'host.invokeTool',
+          'app.ready',
+          'app.state',
+          'app.complete',
+          'app.error',
+          'app.requestAuth',
+        ],
         completionModes: ['summary', 'state'],
         timeouts: {
           launchMs: 10_000,
