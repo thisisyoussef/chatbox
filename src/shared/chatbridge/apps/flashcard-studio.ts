@@ -9,9 +9,19 @@ const MAX_FLASHCARD_STUDIO_DECK_TITLE_LENGTH = 80
 const MAX_FLASHCARD_STUDIO_PROMPT_LENGTH = 160
 const MAX_FLASHCARD_STUDIO_ANSWER_LENGTH = 320
 const MAX_FLASHCARD_STUDIO_PREVIEW_CARDS = 4
+const MAX_FLASHCARD_STUDIO_WEAK_PREVIEW_CARDS = 3
 
 export const FlashcardStudioDeckStatusSchema = z.enum(['empty', 'editing', 'complete'])
 export type FlashcardStudioDeckStatus = z.infer<typeof FlashcardStudioDeckStatusSchema>
+
+export const FlashcardStudioModeSchema = z.enum(['authoring', 'study'])
+export type FlashcardStudioMode = z.infer<typeof FlashcardStudioModeSchema>
+
+export const FlashcardStudioStudyStatusSchema = z.enum(['idle', 'studying', 'complete'])
+export type FlashcardStudioStudyStatus = z.infer<typeof FlashcardStudioStudyStatusSchema>
+
+export const FlashcardStudioStudyConfidenceSchema = z.enum(['easy', 'medium', 'hard'])
+export type FlashcardStudioStudyConfidence = z.infer<typeof FlashcardStudioStudyConfidenceSchema>
 
 export const FlashcardStudioAuthoringActionSchema = z.enum([
   'initialized',
@@ -22,6 +32,13 @@ export const FlashcardStudioAuthoringActionSchema = z.enum([
   'moved-card-up',
   'moved-card-down',
   'cleared-selection',
+  'entered-study-mode',
+  'returned-to-authoring',
+  'revealed-card',
+  'marked-easy',
+  'marked-medium',
+  'marked-hard',
+  'completed-study-round',
 ])
 export type FlashcardStudioAuthoringAction = z.infer<typeof FlashcardStudioAuthoringActionSchema>
 
@@ -34,6 +51,23 @@ export const FlashcardStudioCardSchema = z
   .strict()
 export type FlashcardStudioCard = z.infer<typeof FlashcardStudioCardSchema>
 
+export const FlashcardStudioStudyMarkSchema = z
+  .object({
+    cardId: z.string().trim().min(1),
+    confidence: FlashcardStudioStudyConfidenceSchema,
+  })
+  .strict()
+export type FlashcardStudioStudyMark = z.infer<typeof FlashcardStudioStudyMarkSchema>
+
+export const FlashcardStudioStudyCountsSchema = z
+  .object({
+    easy: z.number().int().nonnegative(),
+    medium: z.number().int().nonnegative(),
+    hard: z.number().int().nonnegative(),
+  })
+  .strict()
+export type FlashcardStudioStudyCounts = z.infer<typeof FlashcardStudioStudyCountsSchema>
+
 export const FlashcardStudioAppSnapshotSchema = z
   .object({
     schemaVersion: z.literal(FLASHCARD_STUDIO_APP_SNAPSHOT_SCHEMA_VERSION),
@@ -41,9 +75,19 @@ export const FlashcardStudioAppSnapshotSchema = z
     request: z.string().trim().min(1).optional(),
     deckTitle: z.string().trim().min(1).max(MAX_FLASHCARD_STUDIO_DECK_TITLE_LENGTH),
     status: FlashcardStudioDeckStatusSchema,
+    mode: FlashcardStudioModeSchema.default('authoring'),
+    studyStatus: FlashcardStudioStudyStatusSchema.default('idle'),
     cardCount: z.number().int().nonnegative(),
     cards: z.array(FlashcardStudioCardSchema).max(MAX_FLASHCARD_STUDIO_CARDS),
     selectedCardId: z.string().trim().min(1).optional(),
+    studyPosition: z.number().int().nonnegative().default(0),
+    revealedCardId: z.string().trim().min(1).optional(),
+    studyMarks: z.array(FlashcardStudioStudyMarkSchema).max(MAX_FLASHCARD_STUDIO_CARDS).default([]),
+    studyCounts: FlashcardStudioStudyCountsSchema.default({
+      easy: 0,
+      medium: 0,
+      hard: 0,
+    }),
     lastAction: FlashcardStudioAuthoringActionSchema,
     statusText: z.string().trim().min(1),
     summary: z.string().trim().min(1),
@@ -78,6 +122,118 @@ export const FlashcardStudioAppSnapshotSchema = z
         message: 'selectedCardId must reference an existing card.',
       })
     }
+
+    if (value.cards.length === 0) {
+      if (value.mode !== 'authoring') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['mode'],
+          message: 'mode must remain authoring when there are no cards.',
+        })
+      }
+
+      if (value.studyStatus !== 'idle') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['studyStatus'],
+          message: 'studyStatus must remain idle when there are no cards.',
+        })
+      }
+    }
+
+    const studyMarkIds = new Set<string>()
+    for (const mark of value.studyMarks) {
+      if (!cardIds.has(mark.cardId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['studyMarks'],
+          message: `Study mark card "${mark.cardId}" must reference an existing card.`,
+        })
+      }
+
+      if (studyMarkIds.has(mark.cardId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['studyMarks'],
+          message: `Duplicate study mark "${mark.cardId}" is not allowed.`,
+        })
+      }
+
+      studyMarkIds.add(mark.cardId)
+    }
+
+    const derivedCounts = value.studyMarks.reduce<FlashcardStudioStudyCounts>(
+      (counts, mark) => ({
+        ...counts,
+        [mark.confidence]: counts[mark.confidence] + 1,
+      }),
+      { easy: 0, medium: 0, hard: 0 }
+    )
+
+    if (
+      value.studyCounts.easy !== derivedCounts.easy ||
+      value.studyCounts.medium !== derivedCounts.medium ||
+      value.studyCounts.hard !== derivedCounts.hard
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['studyCounts'],
+        message: 'studyCounts must match studyMarks.',
+      })
+    }
+
+    if (value.studyPosition > value.cardCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['studyPosition'],
+        message: 'studyPosition cannot exceed cardCount.',
+      })
+    }
+
+    const activeStudyCard =
+      value.studyPosition >= 0 && value.studyPosition < value.cards.length ? value.cards[value.studyPosition] : null
+
+    if (value.mode === 'study' && value.studyStatus === 'studying' && !activeStudyCard) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['studyPosition'],
+        message: 'studyPosition must reference an active card while studying.',
+      })
+    }
+
+    if (value.mode === 'study' && value.studyStatus === 'idle' && value.cardCount > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['studyStatus'],
+        message: 'studyStatus cannot remain idle while mode is study.',
+      })
+    }
+
+    if (value.mode === 'authoring' && value.studyStatus === 'complete' && value.status !== 'complete') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['studyStatus'],
+        message: 'completed study results must stay in study mode until completion is returned to chat.',
+      })
+    }
+
+    if (value.revealedCardId) {
+      if (!activeStudyCard || value.revealedCardId !== activeStudyCard.cardId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['revealedCardId'],
+          message: 'revealedCardId must reference the active study card.',
+        })
+      }
+    }
+
+    if (value.studyStatus === 'complete' && value.studyPosition !== value.cardCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['studyPosition'],
+        message: 'studyPosition must advance to cardCount when studyStatus is complete.',
+      })
+    }
   })
 export type FlashcardStudioAppSnapshot = z.infer<typeof FlashcardStudioAppSnapshotSchema>
 
@@ -85,8 +241,13 @@ type CreateFlashcardStudioAppSnapshotInput = {
   request?: string
   deckTitle?: string
   status?: FlashcardStudioDeckStatus
+  mode?: FlashcardStudioMode
+  studyStatus?: FlashcardStudioStudyStatus
   cards?: FlashcardStudioCard[]
   selectedCardId?: string
+  studyPosition?: number
+  revealedCardId?: string
+  studyMarks?: FlashcardStudioStudyMark[]
   lastAction?: FlashcardStudioAuthoringAction
   lastUpdatedAt?: number
 }
@@ -130,12 +291,135 @@ function normalizeCard(card: FlashcardStudioCard): FlashcardStudioCard {
   })
 }
 
+function normalizeStudyMarks(cards: FlashcardStudioCard[], marks: FlashcardStudioStudyMark[] | undefined) {
+  const availableCardIds = new Set(cards.map((card) => card.cardId))
+  const seenCardIds = new Set<string>()
+  const normalizedMarks: FlashcardStudioStudyMark[] = []
+
+  for (const mark of marks ?? []) {
+    if (!availableCardIds.has(mark.cardId) || seenCardIds.has(mark.cardId)) {
+      continue
+    }
+
+    normalizedMarks.push(
+      FlashcardStudioStudyMarkSchema.parse({
+        cardId: normalizeWhitespace(mark.cardId),
+        confidence: mark.confidence,
+      })
+    )
+    seenCardIds.add(mark.cardId)
+  }
+
+  return normalizedMarks
+}
+
+function buildStudyCounts(studyMarks: FlashcardStudioStudyMark[]): FlashcardStudioStudyCounts {
+  return studyMarks.reduce<FlashcardStudioStudyCounts>(
+    (counts, mark) => ({
+      ...counts,
+      [mark.confidence]: counts[mark.confidence] + 1,
+    }),
+    { easy: 0, medium: 0, hard: 0 }
+  )
+}
+
+function getWeakStudyPrompts(cards: FlashcardStudioCard[], studyMarks: FlashcardStudioStudyMark[]) {
+  const cardById = new Map(cards.map((card) => [card.cardId, card] as const))
+  const hardPrompts = studyMarks
+    .filter((mark) => mark.confidence === 'hard')
+    .map((mark) => cardById.get(mark.cardId))
+    .filter((card): card is FlashcardStudioCard => Boolean(card))
+    .map((card) => summarizeCardPrompt(card.prompt))
+
+  if (hardPrompts.length > 0) {
+    return hardPrompts.slice(0, MAX_FLASHCARD_STUDIO_WEAK_PREVIEW_CARDS)
+  }
+
+  return studyMarks
+    .filter((mark) => mark.confidence === 'medium')
+    .map((mark) => cardById.get(mark.cardId))
+    .filter((card): card is FlashcardStudioCard => Boolean(card))
+    .map((card) => summarizeCardPrompt(card.prompt))
+    .slice(0, MAX_FLASHCARD_STUDIO_WEAK_PREVIEW_CARDS)
+}
+
+function deriveStudyState(input: {
+  cards: FlashcardStudioCard[]
+  mode?: FlashcardStudioMode
+  studyStatus?: FlashcardStudioStudyStatus
+  studyPosition?: number
+  revealedCardId?: string
+  studyMarks?: FlashcardStudioStudyMark[]
+}) {
+  if (input.cards.length === 0) {
+    return {
+      mode: 'authoring' as const,
+      studyStatus: 'idle' as const,
+      studyPosition: 0,
+      revealedCardId: undefined,
+      studyMarks: [] as FlashcardStudioStudyMark[],
+      studyCounts: { easy: 0, medium: 0, hard: 0 },
+    }
+  }
+
+  const normalizedStudyMarks = normalizeStudyMarks(input.cards, input.studyMarks)
+  const normalizedStudyCounts = buildStudyCounts(normalizedStudyMarks)
+
+  const requestedMode = input.mode ?? 'authoring'
+  const requestedStudyStatus =
+    input.studyStatus ?? (requestedMode === 'study' ? 'studying' : normalizedStudyMarks.length > 0 ? 'studying' : 'idle')
+
+  let mode: FlashcardStudioMode = requestedMode
+  let studyStatus: FlashcardStudioStudyStatus = requestedStudyStatus
+
+  if (requestedMode === 'authoring') {
+    studyStatus = normalizedStudyMarks.length > 0 ? 'studying' : 'idle'
+  }
+
+  if (requestedMode === 'study' && requestedStudyStatus === 'idle') {
+    studyStatus = 'studying'
+  }
+
+  const defaultStudyPosition =
+    studyStatus === 'complete'
+      ? input.cards.length
+      : Math.min(normalizedStudyMarks.length, Math.max(0, input.cards.length - 1))
+
+  let studyPosition = input.studyPosition ?? defaultStudyPosition
+  studyPosition = Math.max(0, Math.min(studyPosition, input.cards.length))
+
+  if (studyStatus === 'complete') {
+    studyPosition = input.cards.length
+  }
+
+  if (mode === 'authoring' && studyStatus === 'complete') {
+    mode = 'study'
+  }
+
+  const activeStudyCard =
+    studyPosition >= 0 && studyPosition < input.cards.length ? input.cards[studyPosition] : undefined
+  const revealedCardId =
+    activeStudyCard && input.revealedCardId === activeStudyCard.cardId ? input.revealedCardId : undefined
+
+  return {
+    mode,
+    studyStatus,
+    studyPosition,
+    revealedCardId,
+    studyMarks: normalizedStudyMarks,
+    studyCounts: normalizedStudyCounts,
+  }
+}
+
 function describeFlashcardStudioLastAction(
   action: FlashcardStudioAuthoringAction,
   selectedCard: FlashcardStudioCard | null,
+  currentStudyCard: FlashcardStudioCard | null,
+  studyCounts: FlashcardStudioStudyCounts,
   cardCount: number
 ) {
   const selectedLabel = selectedCard ? `"${summarizeCardPrompt(selectedCard.prompt)}"` : 'the selected card'
+  const studyLabel = currentStudyCard ? `"${summarizeCardPrompt(currentStudyCard.prompt)}"` : 'the current study card'
 
   switch (action) {
     case 'created-card':
@@ -143,35 +427,88 @@ function describeFlashcardStudioLastAction(
     case 'updated-card':
       return selectedCard ? `Latest change: updated ${selectedLabel}.` : 'Latest change: updated a card.'
     case 'deleted-card':
-      return cardCount > 0 ? 'Latest change: deleted a card and kept the remaining deck in order.' : 'Latest change: deleted the final card from the deck.'
+      return cardCount > 0
+        ? 'Latest change: deleted a card and kept the remaining deck in order.'
+        : 'Latest change: deleted the final card from the deck.'
     case 'moved-card-up':
-      return selectedCard ? `Latest change: moved ${selectedLabel} earlier in the deck.` : 'Latest change: moved a card earlier in the deck.'
+      return selectedCard
+        ? `Latest change: moved ${selectedLabel} earlier in the deck.`
+        : 'Latest change: moved a card earlier in the deck.'
     case 'moved-card-down':
-      return selectedCard ? `Latest change: moved ${selectedLabel} later in the deck.` : 'Latest change: moved a card later in the deck.'
+      return selectedCard
+        ? `Latest change: moved ${selectedLabel} later in the deck.`
+        : 'Latest change: moved a card later in the deck.'
     case 'selected-card':
       return selectedCard ? `Current selection: ${selectedLabel}.` : 'A card is selected for editing.'
     case 'cleared-selection':
       return 'Composer reset and ready for a new card.'
+    case 'entered-study-mode':
+      return 'Study mode started from the current deck order.'
+    case 'returned-to-authoring':
+      return 'Returned to editing so the deck can be revised before more studying.'
+    case 'revealed-card':
+      return currentStudyCard
+        ? `Latest change: revealed the answer for ${studyLabel}.`
+        : 'Latest change: revealed the answer for the current card.'
+    case 'marked-easy':
+      return `Latest change: marked ${studyLabel} as easy.`
+    case 'marked-medium':
+      return `Latest change: marked ${studyLabel} as medium.`
+    case 'marked-hard':
+      return `Latest change: marked ${studyLabel} as hard.`
+    case 'completed-study-round':
+      return `Study round finished with ${studyCounts.easy} easy, ${studyCounts.medium} medium, and ${studyCounts.hard} hard cards.`
     case 'initialized':
     default:
       return cardCount > 0 ? 'Deck restored and ready for edits.' : 'Deck initialized and ready for the first card.'
   }
 }
 
-function buildFlashcardStudioStatusText(
-  status: FlashcardStudioDeckStatus,
-  action: FlashcardStudioAuthoringAction,
+function buildFlashcardStudioStatusText(snapshot: {
+  status: FlashcardStudioDeckStatus
+  mode: FlashcardStudioMode
+  studyStatus: FlashcardStudioStudyStatus
+  lastAction: FlashcardStudioAuthoringAction
   cardCount: number
-) {
-  if (status === 'complete') {
-    return cardCount > 0 ? 'Deck returned to chat' : 'Empty deck returned'
+  studyPosition: number
+  studyCounts: FlashcardStudioStudyCounts
+}) {
+  if (snapshot.status === 'complete') {
+    if (snapshot.mode === 'study') {
+      return 'Study results returned to chat'
+    }
+
+    return snapshot.cardCount > 0 ? 'Deck returned to chat' : 'Empty deck returned'
   }
 
-  if (cardCount === 0) {
+  if (snapshot.cardCount === 0) {
     return 'No cards yet'
   }
 
-  switch (action) {
+  if (snapshot.mode === 'study') {
+    if (snapshot.studyStatus === 'complete') {
+      return 'Study round complete'
+    }
+
+    switch (snapshot.lastAction) {
+      case 'entered-study-mode':
+        return 'Study mode ready'
+      case 'revealed-card':
+        return 'Answer revealed'
+      case 'marked-easy':
+        return 'Marked easy'
+      case 'marked-medium':
+        return 'Marked medium'
+      case 'marked-hard':
+        return 'Marked hard'
+      case 'returned-to-authoring':
+        return 'Back to editing'
+      default:
+        return `Studying card ${Math.min(snapshot.studyPosition + 1, snapshot.cardCount)} of ${snapshot.cardCount}`
+    }
+  }
+
+  switch (snapshot.lastAction) {
     case 'created-card':
       return 'Card created'
     case 'updated-card':
@@ -186,7 +523,6 @@ function buildFlashcardStudioStatusText(
       return 'Editing selected card'
     case 'cleared-selection':
       return 'Ready for a new card'
-    case 'initialized':
     default:
       return 'Deck ready'
   }
@@ -195,14 +531,28 @@ function buildFlashcardStudioStatusText(
 function buildFlashcardStudioSummary(snapshot: {
   deckTitle: string
   status: FlashcardStudioDeckStatus
+  mode: FlashcardStudioMode
+  studyStatus: FlashcardStudioStudyStatus
   cards: FlashcardStudioCard[]
   cardCount: number
-  lastAction: FlashcardStudioAuthoringAction
   selectedCardId?: string
+  studyPosition: number
+  studyMarks: FlashcardStudioStudyMark[]
+  studyCounts: FlashcardStudioStudyCounts
+  lastAction: FlashcardStudioAuthoringAction
 }) {
   const selectedCard = snapshot.cards.find((card) => card.cardId === snapshot.selectedCardId) ?? null
-  const previewCards = snapshot.cards.slice(0, MAX_FLASHCARD_STUDIO_PREVIEW_CARDS).map((card) => summarizeCardPrompt(card.prompt))
-  const actionSentence = describeFlashcardStudioLastAction(snapshot.lastAction, selectedCard, snapshot.cardCount)
+  const currentStudyCard =
+    snapshot.studyPosition >= 0 && snapshot.studyPosition < snapshot.cards.length
+      ? snapshot.cards[snapshot.studyPosition]
+      : null
+  const actionSentence = describeFlashcardStudioLastAction(
+    snapshot.lastAction,
+    selectedCard,
+    currentStudyCard,
+    snapshot.studyCounts,
+    snapshot.cardCount
+  )
 
   if (snapshot.cardCount === 0) {
     const base =
@@ -212,6 +562,32 @@ function buildFlashcardStudioSummary(snapshot: {
     return normalizeWhitespace(`${base} ${actionSentence} The empty state is explicit so later chat does not imply study progress.`)
   }
 
+  if (snapshot.mode === 'study') {
+    const reviewedCount = snapshot.studyMarks.length
+    const remainingCount = Math.max(0, snapshot.cardCount - reviewedCount)
+    const weakPrompts = getWeakStudyPrompts(snapshot.cards, snapshot.studyMarks)
+    const base =
+      snapshot.status === 'complete'
+        ? `Flashcard Studio returned study results for "${snapshot.deckTitle}" after reviewing ${reviewedCount} of ${snapshot.cardCount} cards.`
+        : snapshot.studyStatus === 'complete'
+          ? `Flashcard Studio finished studying "${snapshot.deckTitle}" and is holding the results in the thread.`
+          : `Flashcard Studio is actively studying "${snapshot.deckTitle}" with ${reviewedCount} of ${snapshot.cardCount} cards reviewed.`
+    const progressSentence = `Confidence totals: ${snapshot.studyCounts.easy} easy, ${snapshot.studyCounts.medium} medium, ${snapshot.studyCounts.hard} hard. ${remainingCount} cards remaining.`
+    const currentCardSentence =
+      currentStudyCard && snapshot.studyStatus !== 'complete'
+        ? `Current card: "${summarizeCardPrompt(currentStudyCard.prompt)}".`
+        : 'No current study card is waiting.'
+    const weakSentence =
+      weakPrompts.length > 0
+        ? `Needs review: ${weakPrompts.join('; ')}.`
+        : reviewedCount > 0
+          ? 'No hard review cards are currently flagged.'
+          : 'No confidence marks recorded yet.'
+
+    return normalizeWhitespace(`${base} ${progressSentence} ${currentCardSentence} ${weakSentence} ${actionSentence}`)
+  }
+
+  const previewCards = snapshot.cards.slice(0, MAX_FLASHCARD_STUDIO_PREVIEW_CARDS).map((card) => summarizeCardPrompt(card.prompt))
   const previewSentence = `Card preview: ${previewCards.join('; ')}.`
   const selectedSentence = selectedCard
     ? `Selected card: "${summarizeCardPrompt(selectedCard.prompt)}".`
@@ -224,12 +600,32 @@ function buildFlashcardStudioSummary(snapshot: {
   return normalizeWhitespace(`${base} ${previewSentence} ${selectedSentence} ${actionSentence}`)
 }
 
-function buildFlashcardStudioResumeHint(deckTitle: string, cardCount: number) {
-  if (cardCount === 0) {
-    return `Reopen Flashcard Studio to add the first card to "${deckTitle}".`
+function buildFlashcardStudioResumeHint(snapshot: {
+  deckTitle: string
+  cardCount: number
+  mode: FlashcardStudioMode
+  studyStatus: FlashcardStudioStudyStatus
+  studyPosition: number
+  studyMarks: FlashcardStudioStudyMark[]
+}) {
+  if (snapshot.cardCount === 0) {
+    return `Reopen Flashcard Studio to add the first card to "${snapshot.deckTitle}".`
   }
 
-  return `Reopen Flashcard Studio to keep editing "${deckTitle}" or start study mode later.`
+  if (snapshot.mode === 'study') {
+    if (snapshot.studyStatus === 'complete') {
+      return `Reopen Flashcard Studio to review the hard cards in "${snapshot.deckTitle}" or keep editing the deck.`
+    }
+
+    const currentLabel = Math.min(snapshot.studyPosition + 1, snapshot.cardCount)
+    return `Reopen Flashcard Studio to continue studying "${snapshot.deckTitle}" at card ${currentLabel} of ${snapshot.cardCount}.`
+  }
+
+  if (snapshot.studyMarks.length > 0) {
+    return `Reopen Flashcard Studio to keep editing "${snapshot.deckTitle}" or resume the current study round later.`
+  }
+
+  return `Reopen Flashcard Studio to keep editing "${snapshot.deckTitle}" or start study mode later.`
 }
 
 export function getFlashcardStudioSummary(snapshot: FlashcardStudioAppSnapshot) {
@@ -244,6 +640,14 @@ export function createFlashcardStudioAppSnapshot(
   const lastAction = input.lastAction ?? 'initialized'
   const status = input.status ?? (cards.length === 0 ? 'empty' : 'editing')
   const selectedCardId = cards.some((card) => card.cardId === input.selectedCardId) ? input.selectedCardId : undefined
+  const studyState = deriveStudyState({
+    cards,
+    mode: input.mode,
+    studyStatus: input.studyStatus,
+    studyPosition: input.studyPosition,
+    revealedCardId: input.revealedCardId,
+    studyMarks: input.studyMarks,
+  })
 
   return FlashcardStudioAppSnapshotSchema.parse({
     schemaVersion: FLASHCARD_STUDIO_APP_SNAPSHOT_SCHEMA_VERSION,
@@ -251,20 +655,46 @@ export function createFlashcardStudioAppSnapshot(
     request: normalizeOptionalWhitespace(input.request),
     deckTitle,
     status,
+    mode: studyState.mode,
+    studyStatus: studyState.studyStatus,
     cardCount: cards.length,
     cards,
     selectedCardId,
+    studyPosition: studyState.studyPosition,
+    revealedCardId: studyState.revealedCardId,
+    studyMarks: studyState.studyMarks,
+    studyCounts: studyState.studyCounts,
     lastAction,
-    statusText: buildFlashcardStudioStatusText(status, lastAction, cards.length),
+    statusText: buildFlashcardStudioStatusText({
+      status,
+      mode: studyState.mode,
+      studyStatus: studyState.studyStatus,
+      lastAction,
+      cardCount: cards.length,
+      studyPosition: studyState.studyPosition,
+      studyCounts: studyState.studyCounts,
+    }),
     summary: buildFlashcardStudioSummary({
       deckTitle,
       status,
+      mode: studyState.mode,
+      studyStatus: studyState.studyStatus,
       cards,
       cardCount: cards.length,
-      lastAction,
       selectedCardId,
+      studyPosition: studyState.studyPosition,
+      studyMarks: studyState.studyMarks,
+      studyCounts: studyState.studyCounts,
+      lastAction,
     }),
-    resumeHint: buildFlashcardStudioResumeHint(deckTitle, cards.length),
+    resumeHint: buildFlashcardStudioResumeHint({
+      deckTitle,
+      cardCount: cards.length,
+      mode: studyState.mode,
+      studyStatus: studyState.studyStatus,
+      studyPosition: studyState.studyPosition,
+      studyMarks: studyState.studyMarks,
+    }),
     lastUpdatedAt: input.lastUpdatedAt ?? Date.now(),
   })
 }
@@ -277,6 +707,8 @@ export function createInitialFlashcardStudioAppSnapshot(
     deckTitle: input.deckTitle,
     cards: [],
     status: 'empty',
+    mode: 'authoring',
+    studyStatus: 'idle',
     lastAction: 'initialized',
     lastUpdatedAt: input.updatedAt ?? Date.now(),
   })

@@ -156,6 +156,54 @@ describe('chatbridge app state helpers', () => {
     expect(formatChatBridgeAppStateDigest(digest)).not.toContain('Plants use sunlight to make food.')
   })
 
+  it('includes bounded study progress for flashcard study mode snapshots', () => {
+    const digest = buildChatBridgeAppStateDigest(
+      createPart({
+        appId: 'flashcard-studio',
+        appName: 'Flashcard Studio',
+        snapshot: createFlashcardStudioAppSnapshot({
+          deckTitle: 'Science review',
+          mode: 'study',
+          studyStatus: 'studying',
+          cards: [
+            {
+              cardId: 'card-1',
+              prompt: 'What does the mitochondria do?',
+              answer: 'It helps the cell produce energy.',
+            },
+            {
+              cardId: 'card-2',
+              prompt: 'What is photosynthesis?',
+              answer: 'Plants use sunlight to make food.',
+            },
+            {
+              cardId: 'card-3',
+              prompt: 'What is cellular respiration?',
+              answer: 'Cells convert glucose and oxygen into usable energy.',
+            },
+          ],
+          studyPosition: 2,
+          revealedCardId: 'card-3',
+          studyMarks: [
+            { cardId: 'card-1', confidence: 'easy' },
+            { cardId: 'card-2', confidence: 'hard' },
+          ],
+          lastAction: 'revealed-card',
+          lastUpdatedAt: 3_100,
+        }),
+      })
+    )
+
+    expect(digest).toMatchObject({
+      kind: 'flashcard-studio',
+    })
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Mode: study')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Study progress: 2 reviewed, 1 remaining')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Confidence: 1 easy, 0 medium, 1 hard')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Needs review: What is photosynthesis?')
+    expect(formatChatBridgeAppStateDigest(digest)).not.toContain('Plants use sunlight to make food.')
+  })
+
   it('stores only the latest bounded set of app-linked screenshots', () => {
     const first = appendChatBridgeAppScreenshot(undefined, {
       kind: 'app-screenshot',

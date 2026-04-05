@@ -56,6 +56,52 @@ describe('shared flashcard studio helpers', () => {
     expect(getFlashcardStudioSummary(snapshot)).not.toContain('Plants use sunlight to make food.')
   })
 
+  it('builds a bounded study summary with confidence totals and weak-card prompts', () => {
+    const snapshot = createFlashcardStudioAppSnapshot({
+      request: 'Quiz me on science.',
+      deckTitle: 'Science review',
+      mode: 'study',
+      studyStatus: 'studying',
+      cards: [
+        {
+          cardId: 'card-1',
+          prompt: 'What does the mitochondria do?',
+          answer: 'It helps the cell produce energy.',
+        },
+        {
+          cardId: 'card-2',
+          prompt: 'What is photosynthesis?',
+          answer: 'Plants use sunlight to make food.',
+        },
+        {
+          cardId: 'card-3',
+          prompt: 'What is cellular respiration?',
+          answer: 'Cells convert glucose and oxygen into usable energy.',
+        },
+      ],
+      studyPosition: 2,
+      revealedCardId: 'card-3',
+      studyMarks: [
+        { cardId: 'card-1', confidence: 'easy' },
+        { cardId: 'card-2', confidence: 'hard' },
+      ],
+      lastAction: 'revealed-card',
+      lastUpdatedAt: 4_000,
+    })
+
+    expect(snapshot.mode).toBe('study')
+    expect(snapshot.studyCounts).toEqual({
+      easy: 1,
+      medium: 0,
+      hard: 1,
+    })
+    expect(snapshot.statusText).toBe('Answer revealed')
+    expect(getFlashcardStudioSummary(snapshot)).toContain('with 2 of 3 cards reviewed')
+    expect(getFlashcardStudioSummary(snapshot)).toContain('1 easy, 0 medium, 1 hard')
+    expect(getFlashcardStudioSummary(snapshot)).toContain('Needs review: What is photosynthesis?')
+    expect(getFlashcardStudioSummary(snapshot)).not.toContain('Plants use sunlight to make food.')
+  })
+
   it('fails closed when the selected card is missing or ids are duplicated', () => {
     expect(
       parseFlashcardStudioAppSnapshot({
@@ -74,6 +120,30 @@ describe('shared flashcard studio helpers', () => {
         summary: 'Broken summary',
         resumeHint: 'Broken hint',
         lastUpdatedAt: 3_000,
+      })
+    ).toBeNull()
+  })
+
+  it('fails closed on invalid study progress that does not match the deck', () => {
+    expect(
+      parseFlashcardStudioAppSnapshot({
+        schemaVersion: 1,
+        appId: 'flashcard-studio',
+        deckTitle: 'Broken deck',
+        status: 'editing',
+        mode: 'study',
+        studyStatus: 'studying',
+        cardCount: 1,
+        cards: [{ cardId: 'card-1', prompt: 'Q1', answer: 'A1' }],
+        studyPosition: 4,
+        revealedCardId: 'card-1',
+        studyMarks: [{ cardId: 'missing-card', confidence: 'hard' }],
+        studyCounts: { easy: 0, medium: 0, hard: 1 },
+        lastAction: 'marked-hard',
+        statusText: 'Marked hard',
+        summary: 'Broken summary',
+        resumeHint: 'Broken hint',
+        lastUpdatedAt: 4_000,
       })
     ).toBeNull()
   })

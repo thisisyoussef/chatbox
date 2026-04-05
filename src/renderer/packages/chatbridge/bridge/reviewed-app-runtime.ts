@@ -1785,6 +1785,136 @@ function createFlashcardStudioRuntimeMarkup(
         font-size: 12px;
       }
 
+      .flashcard-workspace--study {
+        grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.92fr);
+      }
+
+      .flashcard-study-panel {
+        justify-content: center;
+      }
+
+      .flashcard-study-stage {
+        display: grid;
+        gap: 16px;
+        min-height: 100%;
+      }
+
+      .flashcard-study-progress {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .flashcard-study-card {
+        display: grid;
+        gap: 14px;
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background:
+          radial-gradient(circle at top right, rgba(255, 214, 160, 0.42), transparent 32%),
+          linear-gradient(180deg, #fffdfa 0%, #fff6e9 100%);
+        padding: 18px;
+        min-height: 320px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+      }
+
+      .flashcard-study-face {
+        display: grid;
+        gap: 14px;
+        align-content: start;
+      }
+
+      .flashcard-study-face-label {
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--accent);
+      }
+
+      .flashcard-study-prompt {
+        font-size: clamp(24px, 5vw, 34px);
+        font-weight: 800;
+        line-height: 1.08;
+      }
+
+      .flashcard-study-answer-shell {
+        border-radius: 20px;
+        border: 1px dashed #e6bf8f;
+        background: rgba(255, 255, 255, 0.8);
+        padding: 14px 16px;
+        min-height: 110px;
+      }
+
+      .flashcard-study-answer-shell[data-revealed="true"] {
+        border-style: solid;
+        background: white;
+      }
+
+      .flashcard-study-answer-copy {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .flashcard-study-answer {
+        margin: 0;
+        color: var(--ink);
+        font-size: 16px;
+        line-height: 1.55;
+      }
+
+      .flashcard-study-actions,
+      .flashcard-confidence-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .flashcard-confidence-button[data-confidence="easy"] {
+        background: #eef9f1;
+        border-color: #9fd0aa;
+        color: #1f6a39;
+      }
+
+      .flashcard-confidence-button[data-confidence="medium"] {
+        background: #fff5de;
+        border-color: #efc15f;
+        color: #8a5710;
+      }
+
+      .flashcard-confidence-button[data-confidence="hard"] {
+        background: #fff0eb;
+        border-color: #eea48b;
+        color: #9b4221;
+      }
+
+      .flashcard-study-sidebar {
+        gap: 12px;
+      }
+
+      .flashcard-study-sidebar-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .flashcard-study-sidebar-item {
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: #fffaf3;
+        padding: 12px;
+      }
+
+      .flashcard-study-sidebar-item strong {
+        display: block;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+        margin-bottom: 6px;
+      }
+
       .sr-only {
         position: absolute;
         width: 1px;
@@ -1799,6 +1929,10 @@ function createFlashcardStudioRuntimeMarkup(
 
       @media (max-width: 860px) {
         .flashcard-workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .flashcard-workspace--study {
           grid-template-columns: 1fr;
         }
       }
@@ -1861,8 +1995,108 @@ function createFlashcardStudioRuntimeMarkup(
             .replaceAll("'", '&#39;');
         }
 
+        function normalizeCards(cardsValue) {
+          if (!Array.isArray(cardsValue)) {
+            return [];
+          }
+
+          const seenCardIds = new Set();
+          return cardsValue
+            .map((card) => {
+              if (!card || typeof card !== 'object') {
+                return null;
+              }
+
+              const cardId = normalizeOptionalWhitespace(card.cardId);
+              const prompt = normalizeOptionalWhitespace(card.prompt);
+              const answer = normalizeOptionalWhitespace(card.answer);
+
+              if (!cardId || !prompt || !answer || seenCardIds.has(cardId)) {
+                return null;
+              }
+
+              seenCardIds.add(cardId);
+              return {
+                cardId,
+                prompt,
+                answer,
+              };
+            })
+            .filter(Boolean)
+            .slice(0, 32);
+        }
+
+        function normalizeStudyMarks(cards, marksValue) {
+          if (!Array.isArray(marksValue)) {
+            return [];
+          }
+
+          const availableCardIds = new Set(cards.map((card) => card.cardId));
+          const seenCardIds = new Set();
+
+          return marksValue
+            .map((mark) => {
+              if (!mark || typeof mark !== 'object') {
+                return null;
+              }
+
+              const cardId = normalizeOptionalWhitespace(mark.cardId);
+              const confidence = mark.confidence;
+
+              if (
+                !cardId ||
+                !availableCardIds.has(cardId) ||
+                seenCardIds.has(cardId) ||
+                (confidence !== 'easy' && confidence !== 'medium' && confidence !== 'hard')
+              ) {
+                return null;
+              }
+
+              seenCardIds.add(cardId);
+              return {
+                cardId,
+                confidence,
+              };
+            })
+            .filter(Boolean)
+            .slice(0, 32);
+        }
+
+        function buildStudyCounts(studyMarks) {
+          return studyMarks.reduce(
+            (counts, mark) => {
+              counts[mark.confidence] += 1;
+              return counts;
+            },
+            { easy: 0, medium: 0, hard: 0 }
+          );
+        }
+
+        function findFirstUnmarkedCardIndex(cards, studyMarks) {
+          const markedCardIds = new Set(studyMarks.map((mark) => mark.cardId));
+          const firstUnmarkedIndex = cards.findIndex((card) => !markedCardIds.has(card.cardId));
+          return firstUnmarkedIndex < 0 ? cards.length : firstUnmarkedIndex;
+        }
+
         function getCards() {
-          return Array.isArray(state.snapshot.cards) ? state.snapshot.cards : [];
+          return normalizeCards(state.snapshot.cards);
+        }
+
+        function getStudyMarks() {
+          return normalizeStudyMarks(getCards(), state.snapshot.studyMarks);
+        }
+
+        function getStudyCounts() {
+          return buildStudyCounts(getStudyMarks());
+        }
+
+        function getReviewedCount() {
+          const counts = getStudyCounts();
+          return counts.easy + counts.medium + counts.hard;
+        }
+
+        function getRemainingCount() {
+          return Math.max(0, getCards().length - getReviewedCount());
         }
 
         function getSelectedIndex() {
@@ -1871,6 +2105,32 @@ function createFlashcardStudioRuntimeMarkup(
 
         function getSelectedCard() {
           return getCards().find((card) => card.cardId === state.snapshot.selectedCardId) || null;
+        }
+
+        function getCurrentStudyCard() {
+          const cards = getCards();
+          const studyPosition = Number.isInteger(state.snapshot.studyPosition) ? state.snapshot.studyPosition : 0;
+          return studyPosition >= 0 && studyPosition < cards.length ? cards[studyPosition] : null;
+        }
+
+        function getWeakStudyPrompts(cards, studyMarks) {
+          const cardById = new Map(cards.map((card) => [card.cardId, card]));
+          const hardPrompts = studyMarks
+            .filter((mark) => mark.confidence === 'hard')
+            .map((mark) => cardById.get(mark.cardId))
+            .filter(Boolean)
+            .map((card) => summarizeCardPrompt(card.prompt));
+
+          if (hardPrompts.length > 0) {
+            return hardPrompts.slice(0, 3);
+          }
+
+          return studyMarks
+            .filter((mark) => mark.confidence === 'medium')
+            .map((mark) => cardById.get(mark.cardId))
+            .filter(Boolean)
+            .map((card) => summarizeCardPrompt(card.prompt))
+            .slice(0, 3);
         }
 
         function syncEditorFromSelection() {
@@ -1890,8 +2150,9 @@ function createFlashcardStudioRuntimeMarkup(
           };
         }
 
-        function describeLastAction(action, selectedCard, cardCount) {
+        function describeLastAction(action, selectedCard, currentStudyCard, studyCounts, cardCount) {
           const selectedLabel = selectedCard ? '"' + summarizeCardPrompt(selectedCard.prompt) + '"' : 'the selected card';
+          const studyLabel = currentStudyCard ? '"' + summarizeCardPrompt(currentStudyCard.prompt) + '"' : 'the current study card';
 
           if (action === 'created-card') {
             return selectedCard ? 'Latest change: created ' + selectedLabel + '.' : 'Latest change: created a new card.';
@@ -1916,35 +2177,96 @@ function createFlashcardStudioRuntimeMarkup(
           if (action === 'cleared-selection') {
             return 'Composer reset and ready for a new card.';
           }
+          if (action === 'entered-study-mode') {
+            return 'Study mode started from the current deck order.';
+          }
+          if (action === 'returned-to-authoring') {
+            return 'Returned to editing so the deck can be revised before more studying.';
+          }
+          if (action === 'revealed-card') {
+            return currentStudyCard
+              ? 'Latest change: revealed the answer for ' + studyLabel + '.'
+              : 'Latest change: revealed the answer for the current card.';
+          }
+          if (action === 'marked-easy') {
+            return 'Latest change: marked ' + studyLabel + ' as easy.';
+          }
+          if (action === 'marked-medium') {
+            return 'Latest change: marked ' + studyLabel + ' as medium.';
+          }
+          if (action === 'marked-hard') {
+            return 'Latest change: marked ' + studyLabel + ' as hard.';
+          }
+          if (action === 'completed-study-round') {
+            return (
+              'Study round finished with ' +
+              studyCounts.easy +
+              ' easy, ' +
+              studyCounts.medium +
+              ' medium, and ' +
+              studyCounts.hard +
+              ' hard cards.'
+            );
+          }
           return cardCount > 0 ? 'Deck restored and ready for edits.' : 'Deck initialized and ready for the first card.';
         }
 
-        function buildStatusText(status, action, cardCount) {
-          if (status === 'complete') {
-            return cardCount > 0 ? 'Deck returned to chat' : 'Empty deck returned';
+        function buildStatusText(snapshot) {
+          if (snapshot.status === 'complete') {
+            if (snapshot.mode === 'study') {
+              return 'Study results returned to chat';
+            }
+            return snapshot.cardCount > 0 ? 'Deck returned to chat' : 'Empty deck returned';
           }
-          if (cardCount === 0) {
+
+          if (snapshot.cardCount === 0) {
             return 'No cards yet';
           }
-          if (action === 'created-card') {
+
+          if (snapshot.mode === 'study') {
+            if (snapshot.studyStatus === 'complete') {
+              return 'Study round complete';
+            }
+            if (snapshot.lastAction === 'entered-study-mode') {
+              return 'Study mode ready';
+            }
+            if (snapshot.lastAction === 'revealed-card') {
+              return 'Answer revealed';
+            }
+            if (snapshot.lastAction === 'marked-easy') {
+              return 'Marked easy';
+            }
+            if (snapshot.lastAction === 'marked-medium') {
+              return 'Marked medium';
+            }
+            if (snapshot.lastAction === 'marked-hard') {
+              return 'Marked hard';
+            }
+            if (snapshot.lastAction === 'returned-to-authoring') {
+              return 'Back to editing';
+            }
+            return 'Studying card ' + Math.min(snapshot.studyPosition + 1, snapshot.cardCount) + ' of ' + snapshot.cardCount;
+          }
+
+          if (snapshot.lastAction === 'created-card') {
             return 'Card created';
           }
-          if (action === 'updated-card') {
+          if (snapshot.lastAction === 'updated-card') {
             return 'Card updated';
           }
-          if (action === 'deleted-card') {
+          if (snapshot.lastAction === 'deleted-card') {
             return 'Card deleted';
           }
-          if (action === 'moved-card-up') {
+          if (snapshot.lastAction === 'moved-card-up') {
             return 'Card moved up';
           }
-          if (action === 'moved-card-down') {
+          if (snapshot.lastAction === 'moved-card-down') {
             return 'Card moved down';
           }
-          if (action === 'selected-card') {
+          if (snapshot.lastAction === 'selected-card') {
             return 'Editing selected card';
           }
-          if (action === 'cleared-selection') {
+          if (snapshot.lastAction === 'cleared-selection') {
             return 'Ready for a new card';
           }
           return 'Deck ready';
@@ -1952,8 +2274,17 @@ function createFlashcardStudioRuntimeMarkup(
 
         function buildSummary(snapshot) {
           const selectedCard = snapshot.cards.find((card) => card.cardId === snapshot.selectedCardId) || null;
-          const previewCards = snapshot.cards.slice(0, 4).map((card) => summarizeCardPrompt(card.prompt));
-          const actionSentence = describeLastAction(snapshot.lastAction, selectedCard, snapshot.cardCount);
+          const currentStudyCard =
+            snapshot.studyPosition >= 0 && snapshot.studyPosition < snapshot.cards.length
+              ? snapshot.cards[snapshot.studyPosition]
+              : null;
+          const actionSentence = describeLastAction(
+            snapshot.lastAction,
+            selectedCard,
+            currentStudyCard,
+            snapshot.studyCounts,
+            snapshot.cardCount
+          );
 
           if (snapshot.cardCount === 0) {
             const base = snapshot.status === 'complete'
@@ -1962,6 +2293,39 @@ function createFlashcardStudioRuntimeMarkup(
             return normalizeWhitespace(base + ' ' + actionSentence + ' The empty state is explicit so later chat does not imply study progress.');
           }
 
+          if (snapshot.mode === 'study') {
+            const reviewedCount = snapshot.studyCounts.easy + snapshot.studyCounts.medium + snapshot.studyCounts.hard;
+            const remainingCount = Math.max(0, snapshot.cardCount - reviewedCount);
+            const weakPrompts = getWeakStudyPrompts(snapshot.cards, snapshot.studyMarks);
+            const base = snapshot.status === 'complete'
+              ? 'Flashcard Studio returned study results for "' + snapshot.deckTitle + '" after reviewing ' + reviewedCount + ' of ' + snapshot.cardCount + ' cards.'
+              : snapshot.studyStatus === 'complete'
+                ? 'Flashcard Studio finished studying "' + snapshot.deckTitle + '" and is holding the results in the thread.'
+                : 'Flashcard Studio is actively studying "' + snapshot.deckTitle + '" with ' + reviewedCount + ' of ' + snapshot.cardCount + ' cards reviewed.';
+            const progressSentence =
+              'Confidence totals: ' +
+              snapshot.studyCounts.easy +
+              ' easy, ' +
+              snapshot.studyCounts.medium +
+              ' medium, ' +
+              snapshot.studyCounts.hard +
+              ' hard. ' +
+              remainingCount +
+              ' cards remaining.';
+            const currentCardSentence =
+              currentStudyCard && snapshot.studyStatus !== 'complete'
+                ? 'Current card: "' + summarizeCardPrompt(currentStudyCard.prompt) + '".'
+                : 'No current study card is waiting.';
+            const weakSentence = weakPrompts.length > 0
+              ? 'Needs review: ' + weakPrompts.join('; ') + '.'
+              : reviewedCount > 0
+                ? 'No hard review cards are currently flagged.'
+                : 'No confidence marks recorded yet.';
+
+            return normalizeWhitespace(base + ' ' + progressSentence + ' ' + currentCardSentence + ' ' + weakSentence + ' ' + actionSentence);
+          }
+
+          const previewCards = snapshot.cards.slice(0, 4).map((card) => summarizeCardPrompt(card.prompt));
           const previewSentence = 'Card preview: ' + previewCards.join('; ') + '.';
           const selectedSentence = selectedCard
             ? 'Selected card: "' + summarizeCardPrompt(selectedCard.prompt) + '".'
@@ -1973,49 +2337,146 @@ function createFlashcardStudioRuntimeMarkup(
           return normalizeWhitespace(base + ' ' + previewSentence + ' ' + selectedSentence + ' ' + actionSentence);
         }
 
-        function buildResumeHint(deckTitle, cardCount) {
-          if (cardCount === 0) {
-            return 'Reopen Flashcard Studio to add the first card to "' + deckTitle + '".';
+        function buildResumeHint(snapshot) {
+          if (snapshot.cardCount === 0) {
+            return 'Reopen Flashcard Studio to add the first card to "' + snapshot.deckTitle + '".';
           }
-          return 'Reopen Flashcard Studio to keep editing "' + deckTitle + '" or start study mode later.';
+          if (snapshot.mode === 'study') {
+            if (snapshot.studyStatus === 'complete') {
+              return 'Reopen Flashcard Studio to review the hard cards in "' + snapshot.deckTitle + '" or keep editing the deck.';
+            }
+            return (
+              'Reopen Flashcard Studio to continue studying "' +
+              snapshot.deckTitle +
+              '" at card ' +
+              Math.min(snapshot.studyPosition + 1, snapshot.cardCount) +
+              ' of ' +
+              snapshot.cardCount +
+              '.'
+            );
+          }
+          if (snapshot.studyMarks.length > 0) {
+            return 'Reopen Flashcard Studio to keep editing "' + snapshot.deckTitle + '" or resume the current study round later.';
+          }
+          return 'Reopen Flashcard Studio to keep editing "' + snapshot.deckTitle + '" or start study mode later.';
         }
 
-        function createSnapshot(status, lastAction) {
-          const cards = getCards()
-            .map((card) => ({
-              cardId: normalizeWhitespace(card.cardId),
-              prompt: normalizeWhitespace(card.prompt),
-              answer: normalizeWhitespace(card.answer),
-            }))
-            .filter((card) => card.cardId && card.prompt && card.answer)
-            .slice(0, 32);
-
-          const selectedCardId = cards.some((card) => card.cardId === state.snapshot.selectedCardId)
-            ? state.snapshot.selectedCardId
+        function buildSnapshotRecord(options) {
+          const cards = normalizeCards(options.cards);
+          const studyMarks = normalizeStudyMarks(cards, options.studyMarks);
+          const studyCounts = buildStudyCounts(studyMarks);
+          const selectedCardId = cards.some((card) => card.cardId === options.selectedCardId)
+            ? options.selectedCardId
             : undefined;
-          const deckTitle = normalizeDeckTitle(state.snapshot.deckTitle);
+          const status =
+            options.status === 'complete' || options.status === 'empty' || options.status === 'editing'
+              ? options.status
+              : cards.length === 0
+                ? 'empty'
+                : 'editing';
+          const deckTitle = normalizeDeckTitle(options.deckTitle);
+          const requestedMode = options.mode === 'study' ? 'study' : 'authoring';
+          const requestedStudyStatus =
+            options.studyStatus === 'complete' || options.studyStatus === 'studying' || options.studyStatus === 'idle'
+              ? options.studyStatus
+              : requestedMode === 'study'
+                ? 'studying'
+                : studyMarks.length > 0
+                  ? 'studying'
+                  : 'idle';
+
+          let mode = requestedMode;
+          let studyStatus = requestedStudyStatus;
+
+          if (cards.length === 0) {
+            mode = 'authoring';
+            studyStatus = 'idle';
+          } else {
+            if (requestedMode === 'authoring') {
+              studyStatus = studyMarks.length > 0 ? 'studying' : 'idle';
+            }
+
+            if (requestedMode === 'study' && requestedStudyStatus === 'idle') {
+              studyStatus = 'studying';
+            }
+          }
+
+          const defaultStudyPosition =
+            studyStatus === 'complete'
+              ? cards.length
+              : Math.min(findFirstUnmarkedCardIndex(cards, studyMarks), Math.max(0, cards.length - 1));
+          let studyPosition = Number.isInteger(options.studyPosition) ? options.studyPosition : defaultStudyPosition;
+          studyPosition = Math.max(0, Math.min(studyPosition, cards.length));
+
+          if (studyStatus === 'complete') {
+            studyPosition = cards.length;
+          }
+
+          if (mode === 'authoring' && studyStatus === 'complete') {
+            mode = 'study';
+          }
+
+          const currentStudyCard = studyPosition >= 0 && studyPosition < cards.length ? cards[studyPosition] : null;
+          const revealedCardId =
+            currentStudyCard && options.revealedCardId === currentStudyCard.cardId ? options.revealedCardId : undefined;
+          const lastAction = options.lastAction || 'initialized';
+
           const nextSnapshot = {
             schemaVersion: 1,
             appId: 'flashcard-studio',
-            request: launch.request || undefined,
+            request: normalizeOptionalWhitespace(options.request) || normalizeOptionalWhitespace(launch.request) || undefined,
             deckTitle,
             status,
+            mode,
+            studyStatus,
             cardCount: cards.length,
             cards,
             selectedCardId,
+            studyPosition,
+            revealedCardId,
+            studyMarks,
+            studyCounts,
             lastAction,
-            statusText: buildStatusText(status, lastAction, cards.length),
+            statusText: '',
             summary: '',
-            resumeHint: buildResumeHint(deckTitle, cards.length),
-            lastUpdatedAt: Date.now(),
+            resumeHint: '',
+            lastUpdatedAt: options.lastUpdatedAt || Date.now(),
           };
 
           if (!selectedCardId) {
             delete nextSnapshot.selectedCardId;
           }
 
+          if (!revealedCardId) {
+            delete nextSnapshot.revealedCardId;
+          }
+
+          nextSnapshot.statusText = buildStatusText(nextSnapshot);
           nextSnapshot.summary = buildSummary(nextSnapshot);
+          nextSnapshot.resumeHint = buildResumeHint(nextSnapshot);
+
           return nextSnapshot;
+        }
+
+        function createSnapshot(status, lastAction, overrides) {
+          return buildSnapshotRecord({
+            request: state.snapshot.request || launch.request,
+            deckTitle: state.snapshot.deckTitle,
+            status,
+            mode: overrides && overrides.mode !== undefined ? overrides.mode : state.snapshot.mode,
+            studyStatus: overrides && overrides.studyStatus !== undefined ? overrides.studyStatus : state.snapshot.studyStatus,
+            cards: state.snapshot.cards,
+            selectedCardId: state.snapshot.selectedCardId,
+            studyPosition:
+              overrides && overrides.studyPosition !== undefined ? overrides.studyPosition : state.snapshot.studyPosition,
+            revealedCardId:
+              overrides && Object.prototype.hasOwnProperty.call(overrides, 'revealedCardId')
+                ? overrides.revealedCardId
+                : state.snapshot.revealedCardId,
+            studyMarks: overrides && overrides.studyMarks !== undefined ? overrides.studyMarks : state.snapshot.studyMarks,
+            lastAction,
+            lastUpdatedAt: Date.now(),
+          });
         }
 
         function sendBridgeEvent(kind, payload) {
@@ -2033,8 +2494,8 @@ function createFlashcardStudioRuntimeMarkup(
           });
         }
 
-        function publishSnapshot(status, lastAction) {
-          const nextSnapshot = createSnapshot(status, lastAction);
+        function publishSnapshot(status, lastAction, overrides) {
+          const nextSnapshot = createSnapshot(status, lastAction, overrides);
           state.snapshot = clone(nextSnapshot);
           syncEditorFromSelection();
           render();
@@ -2047,6 +2508,8 @@ function createFlashcardStudioRuntimeMarkup(
 
         function publishCompletion() {
           const nextSnapshot = createSnapshot(getCards().length === 0 ? 'empty' : 'complete', state.snapshot.lastAction || 'initialized');
+          const reviewedCount = nextSnapshot.studyCounts.easy + nextSnapshot.studyCounts.medium + nextSnapshot.studyCounts.hard;
+          const weakPrompts = getWeakStudyPrompts(nextSnapshot.cards, nextSnapshot.studyMarks);
           state.snapshot = clone(nextSnapshot);
           render();
           sendBridgeEvent('app.state', {
@@ -2059,21 +2522,32 @@ function createFlashcardStudioRuntimeMarkup(
               schemaVersion: 1,
               status: 'success',
               suggestedSummary: {
-                title: 'Flashcard deck returned to chat',
+                title: nextSnapshot.mode === 'study' ? 'Flashcard study results returned to chat' : 'Flashcard deck returned to chat',
                 text: nextSnapshot.summary,
-                bullets: [
-                  'Deck: ' + nextSnapshot.deckTitle,
-                  'Cards: ' + nextSnapshot.cardCount,
-                  nextSnapshot.cardCount > 0
-                    ? 'Preview: ' + nextSnapshot.cards.slice(0, 3).map((card) => summarizeCardPrompt(card.prompt)).join(' | ')
-                    : 'Preview: no cards yet',
-                ],
+                bullets:
+                  nextSnapshot.mode === 'study'
+                    ? [
+                        'Deck: ' + nextSnapshot.deckTitle,
+                        'Reviewed: ' + reviewedCount + ' of ' + nextSnapshot.cardCount,
+                        'Confidence: ' + nextSnapshot.studyCounts.easy + ' easy, ' + nextSnapshot.studyCounts.medium + ' medium, ' + nextSnapshot.studyCounts.hard + ' hard',
+                        weakPrompts.length > 0 ? 'Needs review: ' + weakPrompts.join(' | ') : 'Needs review: no hard cards flagged',
+                      ]
+                    : [
+                        'Deck: ' + nextSnapshot.deckTitle,
+                        'Cards: ' + nextSnapshot.cardCount,
+                        nextSnapshot.cardCount > 0
+                          ? 'Preview: ' + nextSnapshot.cards.slice(0, 3).map((card) => summarizeCardPrompt(card.prompt)).join(' | ')
+                          : 'Preview: no cards yet',
+                      ],
               },
               outcomeData: {
                 appId: launch.appId,
                 deckTitle: nextSnapshot.deckTitle,
                 cardCount: nextSnapshot.cardCount,
                 selectedCardId: nextSnapshot.selectedCardId || null,
+                mode: nextSnapshot.mode,
+                reviewedCount,
+                studyCounts: nextSnapshot.studyCounts,
               },
               resumability: {
                 resumable: true,
@@ -2219,6 +2693,120 @@ function createFlashcardStudioRuntimeMarkup(
           publishSnapshot('editing', offset < 0 ? 'moved-card-up' : 'moved-card-down');
         }
 
+        function enterStudyMode() {
+          const cards = getCards();
+          if (cards.length === 0) {
+            setValidationMessage('Add at least one card before starting study mode.');
+            return;
+          }
+
+          const nextStudyMarks = getStudyMarks();
+          const nextIndex = findFirstUnmarkedCardIndex(cards, nextStudyMarks);
+          const nextStudyStatus = nextIndex >= cards.length ? 'complete' : 'studying';
+          state.validationMessage = nextStudyStatus === 'complete' ? 'Study round already complete.' : 'Study mode ready.';
+          publishSnapshot('editing', nextStudyStatus === 'complete' ? 'completed-study-round' : 'entered-study-mode', {
+            mode: 'study',
+            studyStatus: nextStudyStatus,
+            studyPosition: nextStudyStatus === 'complete' ? cards.length : nextIndex,
+            revealedCardId: undefined,
+            studyMarks: nextStudyMarks,
+          });
+        }
+
+        function returnToAuthoring() {
+          state.validationMessage = 'Returned to editing.';
+          publishSnapshot(getCards().length === 0 ? 'empty' : 'editing', 'returned-to-authoring', {
+            mode: 'authoring',
+            studyPosition: findFirstUnmarkedCardIndex(getCards(), getStudyMarks()),
+            revealedCardId: undefined,
+            studyMarks: getStudyMarks(),
+          });
+        }
+
+        function revealStudyCard() {
+          const currentStudyCard = getCurrentStudyCard();
+          if (state.snapshot.mode !== 'study' || !currentStudyCard) {
+            setValidationMessage('Start study mode before revealing an answer.');
+            return;
+          }
+
+          if (state.snapshot.revealedCardId === currentStudyCard.cardId) {
+            setValidationMessage('Answer already revealed.');
+            return;
+          }
+
+          state.validationMessage = 'Answer revealed.';
+          publishSnapshot('editing', 'revealed-card', {
+            mode: 'study',
+            studyStatus: state.snapshot.studyStatus === 'complete' ? 'complete' : 'studying',
+            studyPosition: state.snapshot.studyPosition,
+            revealedCardId: currentStudyCard.cardId,
+            studyMarks: getStudyMarks(),
+          });
+        }
+
+        function markStudyConfidence(confidence) {
+          const currentStudyCard = getCurrentStudyCard();
+          if (state.snapshot.mode !== 'study' || !currentStudyCard) {
+            setValidationMessage('Start study mode before recording confidence.');
+            return;
+          }
+
+          if (state.snapshot.revealedCardId !== currentStudyCard.cardId) {
+            setValidationMessage('Reveal the answer before marking confidence.');
+            return;
+          }
+
+          const nextStudyMarks = getStudyMarks()
+            .filter((mark) => mark.cardId !== currentStudyCard.cardId)
+            .concat({
+              cardId: currentStudyCard.cardId,
+              confidence,
+            });
+          const cards = getCards();
+          const nextIndex = findFirstUnmarkedCardIndex(cards, nextStudyMarks);
+          const nextStudyStatus = nextIndex >= cards.length ? 'complete' : 'studying';
+          const nextAction =
+            nextStudyStatus === 'complete'
+              ? 'completed-study-round'
+              : confidence === 'easy'
+                ? 'marked-easy'
+                : confidence === 'medium'
+                  ? 'marked-medium'
+                  : 'marked-hard';
+
+          state.validationMessage =
+            nextStudyStatus === 'complete' ? 'Study round complete.' : 'Marked this card as ' + confidence + '.';
+          publishSnapshot('editing', nextAction, {
+            mode: 'study',
+            studyStatus: nextStudyStatus,
+            studyPosition: nextStudyStatus === 'complete' ? cards.length : nextIndex,
+            revealedCardId: undefined,
+            studyMarks: nextStudyMarks,
+          });
+        }
+
+        function normalizeIncomingSnapshot(snapshot) {
+          if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+            return createSnapshot(getCards().length === 0 ? 'empty' : 'editing', state.snapshot.lastAction || 'initialized');
+          }
+
+          return buildSnapshotRecord({
+            request: snapshot.request || launch.request,
+            deckTitle: snapshot.deckTitle,
+            status: snapshot.status,
+            mode: snapshot.mode,
+            studyStatus: snapshot.studyStatus,
+            cards: snapshot.cards,
+            selectedCardId: snapshot.selectedCardId,
+            studyPosition: snapshot.studyPosition,
+            revealedCardId: snapshot.revealedCardId,
+            studyMarks: snapshot.studyMarks,
+            lastAction: snapshot.lastAction,
+            lastUpdatedAt: snapshot.lastUpdatedAt,
+          });
+        }
+
         function bindControls() {
           const deckTitleInput = document.getElementById('deck-title-input');
           const promptInput = document.getElementById('card-prompt-input');
@@ -2271,6 +2859,24 @@ function createFlashcardStudioRuntimeMarkup(
 
           const completeButton = document.getElementById('flashcard-complete-button');
           completeButton && completeButton.addEventListener('click', publishCompletion);
+
+          const startStudyButton = document.getElementById('flashcard-start-study-button');
+          startStudyButton && startStudyButton.addEventListener('click', enterStudyMode);
+
+          const returnToEditingButton = document.getElementById('flashcard-return-editing-button');
+          returnToEditingButton && returnToEditingButton.addEventListener('click', returnToAuthoring);
+
+          const revealButton = document.getElementById('flashcard-reveal-button');
+          revealButton && revealButton.addEventListener('click', revealStudyCard);
+
+          root.querySelectorAll('[data-mark-confidence]').forEach((button) => {
+            button.addEventListener('click', () => {
+              const confidence = button.getAttribute('data-mark-confidence');
+              if (confidence === 'easy' || confidence === 'medium' || confidence === 'hard') {
+                markStudyConfidence(confidence);
+              }
+            });
+          });
         }
 
         function render() {
@@ -2278,6 +2884,13 @@ function createFlashcardStudioRuntimeMarkup(
           const cards = getCards();
           const selectedIndex = getSelectedIndex();
           const selectedCard = getSelectedCard();
+          const studyMarks = getStudyMarks();
+          const studyCounts = getStudyCounts();
+          const currentStudyCard = getCurrentStudyCard();
+          const answerRevealed = currentStudyCard && snapshot.revealedCardId === currentStudyCard.cardId;
+          const reviewedCount = getReviewedCount();
+          const remainingCount = getRemainingCount();
+          const weakPrompts = getWeakStudyPrompts(cards, studyMarks);
           const cardsMarkup = cards
             .map((card, index) =>
               '<button class="flashcard-card-chip" type="button" data-select-card="' +
@@ -2296,38 +2909,31 @@ function createFlashcardStudioRuntimeMarkup(
             .join('');
 
           const validationClass = state.validationMessage
-            ? (state.validationMessage.includes('created') || state.validationMessage.includes('updated') || state.validationMessage.includes('moved') || state.validationMessage.includes('empty again')
+            ? (state.validationMessage.includes('created') ||
+                state.validationMessage.includes('updated') ||
+                state.validationMessage.includes('moved') ||
+                state.validationMessage.includes('empty again') ||
+                state.validationMessage.includes('Study mode ready') ||
+                state.validationMessage.includes('Answer revealed') ||
+                state.validationMessage.includes('Marked this card') ||
+                state.validationMessage.includes('Study round complete') ||
+                state.validationMessage.includes('Returned to editing')
                 ? 'flashcard-inline-note flashcard-inline-note--success'
                 : 'flashcard-inline-note')
             : 'flashcard-inline-note';
 
-          root.innerHTML =
-            '<article class="flashcard-shell" data-flashcard-runtime="true">' +
-            '<div class="flashcard-stack">' +
-            '<section class="flashcard-strip">' +
-            '<div>' +
-            '<p class="flashcard-eyebrow">Reviewed app bridge launch</p>' +
-            '<h1 class="flashcard-title">Flashcard Studio</h1>' +
-            '<p class="flashcard-subtitle">Build a study deck directly in the thread. This slice focuses on authoring only, so card order and edits stay explicit before study mode and Drive arrive.</p>' +
-            '</div>' +
-            '<div class="flashcard-actions">' +
-            '<button id="flashcard-complete-button" class="flashcard-button flashcard-button--primary" type="button">Return deck to chat</button>' +
-            '</div>' +
-            '</section>' +
-            '<section class="flashcard-status-strip">' +
-            '<div class="flashcard-meta">' +
-            '<span class="flashcard-pill">' + escapeHtml(snapshot.statusText) + '</span>' +
-            '<span>' + escapeHtml(snapshot.cardCount + ' cards') + '</span>' +
-            '<span>' + escapeHtml(snapshot.deckTitle) + '</span>' +
-            '</div>' +
-            '<div class="flashcard-meta">' +
-            '<span>' + escapeHtml(snapshot.summary) + '</span>' +
-            '</div>' +
-            '</section>' +
+          const subtitle =
+            snapshot.mode === 'study'
+              ? 'Study one card at a time, reveal the answer, and mark how it felt so later chat stays grounded in bounded progress.'
+              : 'Build a study deck directly in the thread, then switch into a simple study loop without leaving the reviewed app shell.';
+          const completeButtonLabel =
+            snapshot.mode === 'study' ? 'Return study summary to chat' : 'Return deck to chat';
+
+          const authoringWorkspace =
             '<section class="flashcard-workspace">' +
             '<div class="flashcard-panel">' +
             '<h2>Deck order</h2>' +
-            '<p class="flashcard-panel-copy">Pick a card to edit it, or start a new one. Reordering stays visible and button-driven.</p>' +
+            '<p class="flashcard-panel-copy">Pick a card to edit it, or start study mode once the deck looks right. Reordering stays visible and button-driven.</p>' +
             (cards.length > 0
               ? '<div class="flashcard-deck-list">' + cardsMarkup + '</div>'
               : '<div class="flashcard-empty">No cards yet. Add a prompt and answer on the right, then create the first card.</div>') +
@@ -2363,7 +2969,96 @@ function createFlashcardStudioRuntimeMarkup(
             '<div class="' + validationClass + '">' + escapeHtml(state.validationMessage || snapshot.resumeHint) + '</div>' +
             '</div>' +
             '</div>' +
+            '</section>';
+
+          const studyWorkspace =
+            '<section class="flashcard-workspace flashcard-workspace--study">' +
+            '<div class="flashcard-panel flashcard-study-panel">' +
+            '<div class="flashcard-study-stage">' +
+            '<div class="flashcard-study-progress">' +
+            '<span class="flashcard-pill">' + escapeHtml(snapshot.studyStatus === 'complete' ? 'Study complete' : 'Study mode') + '</span>' +
+            '<span>' + escapeHtml(reviewedCount + ' reviewed') + '</span>' +
+            '<span>' + escapeHtml(remainingCount + ' remaining') + '</span>' +
+            '</div>' +
+            '<div class="flashcard-study-card">' +
+            (currentStudyCard
+              ? '<div class="flashcard-study-face">' +
+                  '<div class="flashcard-study-face-label">Prompt</div>' +
+                  '<div class="flashcard-study-prompt">' + escapeHtml(currentStudyCard.prompt) + '</div>' +
+                  '<div class="flashcard-study-answer-shell" data-revealed="' + String(Boolean(answerRevealed)) + '">' +
+                  '<div class="flashcard-study-face-label">' + escapeHtml(answerRevealed ? 'Answer' : 'Reveal first') + '</div>' +
+                  (answerRevealed
+                    ? '<p class="flashcard-study-answer">' + escapeHtml(currentStudyCard.answer) + '</p>'
+                    : '<p class="flashcard-study-answer-copy">Pause and answer in your head first. Reveal only when you want to check yourself.</p>') +
+                  '</div>' +
+                '</div>'
+              : '<div class="flashcard-empty">Study progress is complete for this round. Return the results to chat or keep editing the deck.</div>') +
+            '</div>' +
+            '<div class="flashcard-study-actions">' +
+            '<button id="flashcard-reveal-button" class="flashcard-button flashcard-button--primary" type="button"' +
+            (!currentStudyCard || answerRevealed || snapshot.studyStatus === 'complete' ? ' disabled' : '') +
+            '>Reveal answer</button>' +
+            '<button id="flashcard-return-editing-button" class="flashcard-button" type="button">Keep editing</button>' +
+            '</div>' +
+            '<div class="flashcard-confidence-row">' +
+            '<button class="flashcard-button flashcard-confidence-button" data-mark-confidence="easy" type="button"' +
+            (!currentStudyCard || !answerRevealed || snapshot.studyStatus === 'complete' ? ' disabled' : '') +
+            ' data-confidence="easy">Easy</button>' +
+            '<button class="flashcard-button flashcard-confidence-button" data-mark-confidence="medium" type="button"' +
+            (!currentStudyCard || !answerRevealed || snapshot.studyStatus === 'complete' ? ' disabled' : '') +
+            ' data-confidence="medium">Medium</button>' +
+            '<button class="flashcard-button flashcard-confidence-button" data-mark-confidence="hard" type="button"' +
+            (!currentStudyCard || !answerRevealed || snapshot.studyStatus === 'complete' ? ' disabled' : '') +
+            ' data-confidence="hard">Hard</button>' +
+            '</div>' +
+            '<div class="' + validationClass + '">' + escapeHtml(state.validationMessage || snapshot.resumeHint) + '</div>' +
+            '</div>' +
+            '</div>' +
+            '<div class="flashcard-panel flashcard-study-sidebar">' +
+            '<h2>Study signal</h2>' +
+            '<p class="flashcard-panel-copy">Confidence stays bounded so later chat can focus on what still needs review.</p>' +
+            '<div class="flashcard-study-sidebar-list">' +
+            '<div class="flashcard-study-sidebar-item"><strong>Progress</strong><span>' +
+            escapeHtml('Card ' + Math.min(snapshot.studyPosition + 1, Math.max(1, snapshot.cardCount)) + ' of ' + snapshot.cardCount) +
+            '</span></div>' +
+            '<div class="flashcard-study-sidebar-item"><strong>Confidence</strong><span>' +
+            escapeHtml(studyCounts.easy + ' easy, ' + studyCounts.medium + ' medium, ' + studyCounts.hard + ' hard') +
+            '</span></div>' +
+            '<div class="flashcard-study-sidebar-item"><strong>Needs review</strong><span>' +
+            escapeHtml(weakPrompts.length > 0 ? weakPrompts.join(' | ') : 'No hard cards flagged yet.') +
+            '</span></div>' +
+            '</div>' +
+            '</div>' +
+            '</section>';
+
+          root.innerHTML =
+            '<article class="flashcard-shell" data-flashcard-runtime="true">' +
+            '<div class="flashcard-stack">' +
+            '<section class="flashcard-strip">' +
+            '<div>' +
+            '<p class="flashcard-eyebrow">Reviewed app bridge launch</p>' +
+            '<h1 class="flashcard-title">Flashcard Studio</h1>' +
+            '<p class="flashcard-subtitle">' + escapeHtml(subtitle) + '</p>' +
+            '</div>' +
+            '<div class="flashcard-actions">' +
+            (snapshot.mode !== 'study'
+              ? '<button id="flashcard-start-study-button" class="flashcard-button" type="button"' + (cards.length === 0 ? ' disabled' : '') + '>Start study mode</button>'
+              : '') +
+            '<button id="flashcard-complete-button" class="flashcard-button flashcard-button--primary" type="button">' + escapeHtml(completeButtonLabel) + '</button>' +
+            '</div>' +
             '</section>' +
+            '<section class="flashcard-status-strip">' +
+            '<div class="flashcard-meta">' +
+            '<span class="flashcard-pill">' + escapeHtml(snapshot.statusText) + '</span>' +
+            '<span>' + escapeHtml(snapshot.cardCount + ' cards') + '</span>' +
+            '<span>' + escapeHtml(snapshot.deckTitle) + '</span>' +
+            '<span>' + escapeHtml(snapshot.mode === 'study' ? 'Study mode' : 'Authoring') + '</span>' +
+            '</div>' +
+            '<div class="flashcard-meta">' +
+            '<span>' + escapeHtml(snapshot.summary) + '</span>' +
+            '</div>' +
+            '</section>' +
+            (snapshot.mode === 'study' ? studyWorkspace : authoringWorkspace) +
             '</div>' +
             '</article>' +
             '<p id="runtime-status-live" class="sr-only" aria-live="polite">' + escapeHtml(state.validationMessage || snapshot.statusText) + '</p>';
@@ -2413,7 +3108,7 @@ function createFlashcardStudioRuntimeMarkup(
               return;
             }
 
-            state.snapshot = clone(message.snapshot);
+            state.snapshot = normalizeIncomingSnapshot(message.snapshot);
             state.validationMessage = '';
             syncEditorFromSelection();
             render();

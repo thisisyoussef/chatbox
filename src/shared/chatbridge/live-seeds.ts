@@ -18,6 +18,12 @@ import {
   type DrawingKitAppSnapshot,
 } from './apps/drawing-kit'
 import {
+  FLASHCARD_STUDIO_APP_ID,
+  FLASHCARD_STUDIO_APP_NAME,
+  createFlashcardStudioAppSnapshot,
+  type FlashcardStudioAppSnapshot,
+} from './apps/flashcard-studio'
+import {
   WEATHER_DASHBOARD_APP_ID,
   WEATHER_DASHBOARD_APP_NAME,
   createWeatherDashboardReadySnapshot,
@@ -1075,6 +1081,92 @@ function createDrawingKitRuntimeMessage(id: string, timestamp: number, snapshot:
   }
 }
 
+function createFlashcardStudioRuntimeMessage(id: string, timestamp: number, snapshot: FlashcardStudioAppSnapshot): Message {
+  const request = snapshot.request ?? 'Open Flashcard Studio and help me study biology flashcards.'
+  const toolCallId = 'tool-flashcard-studio-seeded'
+  const appInstanceId = `reviewed-launch:${toolCallId}`
+  const bridgeSessionId = 'bridge-flashcard-studio-seeded'
+  const launchSummary = 'Prepared the reviewed Flashcard Studio study session for the host-owned launch path.'
+
+  return {
+    id,
+    role: 'assistant',
+    timestamp,
+    contentParts: [
+      {
+        type: 'text',
+        text: 'Flashcard Studio is ready in-thread. Reveal the answer, mark confidence, and confirm later chat stays grounded in weak-card review cues.',
+      },
+      {
+        type: 'app',
+        appId: FLASHCARD_STUDIO_APP_ID,
+        appName: FLASHCARD_STUDIO_APP_NAME,
+        appInstanceId,
+        lifecycle: 'ready',
+        summary: snapshot.summary,
+        summaryForModel: snapshot.summary,
+        toolCallId,
+        bridgeSessionId,
+        title: FLASHCARD_STUDIO_APP_NAME,
+        description:
+          'The host kept Flashcard Studio inline so students can study one card at a time and carry only bounded review signals into later chat.',
+        statusText: snapshot.statusText,
+        fallbackTitle: 'Flashcard Studio fallback',
+        fallbackText:
+          'If the study runtime cannot continue, the host keeps the latest safe deck and review summary visible in this thread.',
+        snapshot,
+        values: writeChatBridgeReviewedAppLaunchValues(undefined, {
+          schemaVersion: 1,
+          appId: FLASHCARD_STUDIO_APP_ID,
+          appName: FLASHCARD_STUDIO_APP_NAME,
+          appVersion: '0.1.0',
+          toolName: 'flashcard_studio_open',
+          capability: 'open',
+          summary: launchSummary,
+          request,
+          uiEntry: 'https://apps.example.com/flashcard-studio',
+          origin: 'https://apps.example.com',
+        }),
+      },
+      {
+        type: 'tool-call',
+        state: 'result',
+        toolCallId,
+        toolName: 'flashcard_studio_open',
+        args: {
+          request,
+        },
+        result: {
+          kind: 'chatbridge.host.tool.record.v1',
+          toolName: 'flashcard_studio_open',
+          appId: FLASHCARD_STUDIO_APP_ID,
+          sessionId: 'seeded-flashcard-studio-session',
+          schemaVersion: CHATBRIDGE_HOST_TOOL_SCHEMA_VERSION,
+          executionAuthority: 'host',
+          effect: 'read',
+          retryClassification: 'safe',
+          invocation: {
+            args: {
+              request,
+            },
+          },
+          outcome: {
+            status: 'success',
+            result: {
+              appId: FLASHCARD_STUDIO_APP_ID,
+              appName: FLASHCARD_STUDIO_APP_NAME,
+              capability: 'open',
+              launchReady: true,
+              summary: launchSummary,
+              request,
+            },
+          },
+        },
+      },
+    ],
+  }
+}
+
 function createWeatherDashboardRuntimeMessage(id: string, timestamp: number, snapshot: WeatherDashboardSnapshot): Message {
   const request = snapshot.request ?? 'Open Weather Dashboard for Chicago and show the forecast.'
   const location = snapshot.locationQuery ?? 'Chicago'
@@ -1223,6 +1315,71 @@ function createSeededDrawingKitAppRecords(snapshot: DrawingKitAppSnapshot) {
   const readyTransition = applyChatBridgeAppEvent(createdTransition.instance, readyEvent)
   if (!readyTransition.accepted) {
     throw new Error(`Unable to seed Drawing Kit ready event: ${readyTransition.reason}`)
+  }
+
+  return {
+    instances: [readyTransition.instance],
+    events: [createdEvent, readyEvent],
+  }
+}
+
+function createSeededFlashcardStudioAppRecords(snapshot: FlashcardStudioAppSnapshot) {
+  const appInstanceId = 'reviewed-launch:tool-flashcard-studio-seeded'
+  const bridgeSessionId = 'bridge-flashcard-studio-seeded'
+  const baseInstance = createChatBridgeAppInstance({
+    id: appInstanceId,
+    appId: FLASHCARD_STUDIO_APP_ID,
+    appVersion: '1.0.0',
+    bridgeSessionId,
+    owner: {
+      authority: 'host',
+      conversationSessionId: 'seeded-flashcard-studio-session',
+      initiatedBy: 'assistant',
+    },
+    resumability: {
+      mode: 'resumable',
+      resumeKey: appInstanceId,
+    },
+    createdAt: 3,
+  })
+
+  const createdEvent = createChatBridgeAppEvent({
+    id: 'event-flashcard-created',
+    appInstanceId: baseInstance.id,
+    kind: 'instance.created',
+    actor: 'host',
+    sequence: 1,
+    createdAt: 3,
+    bridgeSessionId,
+    nextStatus: 'launching',
+    payload: {
+      initiatedBy: 'assistant',
+    },
+  })
+
+  const createdTransition = applyChatBridgeAppEvent(baseInstance, createdEvent)
+  if (!createdTransition.accepted) {
+    throw new Error(`Unable to seed Flashcard Studio created event: ${createdTransition.reason}`)
+  }
+
+  const readyEvent = createChatBridgeAppEvent({
+    id: 'event-flashcard-ready',
+    appInstanceId: baseInstance.id,
+    kind: 'bridge.ready',
+    actor: 'host',
+    sequence: 2,
+    createdAt: 4,
+    bridgeSessionId,
+    nextStatus: 'ready',
+    snapshot,
+    payload: {
+      source: 'seeded-runtime',
+    },
+  })
+
+  const readyTransition = applyChatBridgeAppEvent(createdTransition.instance, readyEvent)
+  if (!readyTransition.accepted) {
+    throw new Error(`Unable to seed Flashcard Studio ready event: ${readyTransition.reason}`)
   }
 
   return {
@@ -1785,6 +1942,59 @@ export function buildChatBridgeDrawingKitDoodleDareSessionFixture(): Omit<Sessio
   }
 }
 
+export function buildChatBridgeFlashcardStudioStudySessionFixture(): Omit<Session, 'id'> {
+  const request = 'Open Flashcard Studio and help me study biology flashcards.'
+  const snapshot = createFlashcardStudioAppSnapshot({
+    request,
+    deckTitle: 'Biology review',
+    mode: 'study',
+    studyStatus: 'studying',
+    cards: [
+      {
+        cardId: 'card-1',
+        prompt: 'What does the mitochondria do?',
+        answer: 'It helps the cell produce energy.',
+      },
+      {
+        cardId: 'card-2',
+        prompt: 'What is photosynthesis?',
+        answer: 'Plants use sunlight to make food.',
+      },
+      {
+        cardId: 'card-3',
+        prompt: 'What is cellular respiration?',
+        answer: 'Cells convert glucose and oxygen into usable energy.',
+      },
+    ],
+    selectedCardId: 'card-1',
+    studyPosition: 2,
+    revealedCardId: 'card-3',
+    studyMarks: [
+      { cardId: 'card-1', confidence: 'easy' },
+      { cardId: 'card-2', confidence: 'hard' },
+    ],
+    lastAction: 'revealed-card',
+    lastUpdatedAt: 3,
+  })
+
+  return {
+    name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio study mode`,
+    type: 'chat',
+    threadName: 'Flashcard Studio Study Mode',
+    messages: [
+      createTextMessage(
+        'msg-flashcard-system',
+        'system',
+        'Keep Flashcard follow-up grounded in the host-owned deck summary, study counts, and weak-card prompts instead of raw answer text.',
+        1
+      ),
+      createTextMessage('msg-flashcard-user', 'user', request, 2),
+      createFlashcardStudioRuntimeMessage('msg-flashcard-assistant', 3, snapshot),
+    ],
+    chatBridgeAppRecords: createSeededFlashcardStudioAppRecords(snapshot),
+  }
+}
+
 export function buildChatBridgeWeatherDashboardSessionFixture(): Omit<Session, 'id'> {
   const request = 'Open Weather Dashboard for Chicago and show the forecast.'
   const snapshot = createWeatherDashboardReadySnapshot({
@@ -2085,6 +2295,33 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
         },
       ],
       sessionInput: buildChatBridgeDrawingKitDoodleDareSessionFixture(),
+    },
+    {
+      id: 'flashcard-studio-study-mode',
+      name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio study mode`,
+      description:
+        'Seeds Flashcard Studio in the middle of a study round so you can reveal answers, mark confidence, and verify later chat stays grounded in bounded weak-card review cues.',
+      fixtureRole: 'active-flagship',
+      smokeSupport: 'supported',
+      coverage: ['Flashcard runtime', 'Study progress', 'Weak-card continuity'],
+      auditSteps: [
+        {
+          action: 'Open the seeded Flashcard Studio session and confirm the study card appears inline with progress and confidence controls.',
+          expected:
+            'The reviewed runtime opens directly into study mode, keeps one active card centered, and shows bounded counts instead of a detached result card.',
+        },
+        {
+          action: 'Click `Reveal answer`, then mark the card `Medium` or `Hard`.',
+          expected:
+            'The answer reveals inline, the confidence buttons record the result, and the next card advances without dumping answer text into the surrounding chat timeline.',
+        },
+        {
+          action: 'Ask a follow-up such as `Which card should I review again?` in the same thread after returning the study summary to chat.',
+          expected:
+            'The reply stays grounded in the host-owned weak-card prompt list and confidence totals instead of repeating the full stored answers.',
+        },
+      ],
+      sessionInput: buildChatBridgeFlashcardStudioStudySessionFixture(),
     },
     {
       id: 'weather-dashboard',
