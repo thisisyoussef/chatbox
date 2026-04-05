@@ -19,3 +19,4 @@ export const USE_LOCAL_CHATBOX = process.env.USE_LOCAL_CHATBOX || ''
 export const USE_BETA_CHATBOX = process.env.USE_BETA_CHATBOX || ''
 
 export const NODE_ENV = process.env.NODE_ENV || 'development'
+export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || ''

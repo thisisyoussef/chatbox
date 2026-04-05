@@ -147,6 +147,7 @@ export default defineConfig(({ mode }) => {
         'process.env.USE_BETA_API': JSON.stringify(process.env.USE_BETA_API || ''),
         'process.env.USE_LOCAL_CHATBOX': JSON.stringify(process.env.USE_LOCAL_CHATBOX || ''),
         'process.env.USE_BETA_CHATBOX': JSON.stringify(process.env.USE_BETA_CHATBOX || ''),
+        'process.env.GOOGLE_CLIENT_ID': JSON.stringify(process.env.GOOGLE_CLIENT_ID || ''),
       },
     },
     preload: {
@@ -362,6 +363,7 @@ export default defineConfig(({ mode }) => {
         'process.env.USE_BETA_API': JSON.stringify(process.env.USE_BETA_API || ''),
         'process.env.USE_LOCAL_CHATBOX': JSON.stringify(process.env.USE_LOCAL_CHATBOX || ''),
         'process.env.USE_BETA_CHATBOX': JSON.stringify(process.env.USE_BETA_CHATBOX || ''),
+        'process.env.GOOGLE_CLIENT_ID': JSON.stringify(process.env.GOOGLE_CLIENT_ID || ''),
       },
       optimizeDeps: {
         // Prebundle renderer-only deps that otherwise race cold dev startup.

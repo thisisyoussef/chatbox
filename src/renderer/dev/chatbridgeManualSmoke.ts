@@ -135,6 +135,14 @@ const manualSmokeTraceDescriptors: Record<
     smokeSupport: 'supported',
     storyId: 'SC-006B',
   },
+  'flashcard-studio-drive-resume': {
+    slug: 'chatbridge-flashcard-studio-drive-resume',
+    primaryFamily: 'reviewed-app-launch',
+    evidenceFamilies: ['auth-resource', 'persistence'],
+    runtimeTarget: MANUAL_SMOKE_RUNTIME_TARGET,
+    smokeSupport: 'supported',
+    storyId: 'SC-007A',
+  },
   'weather-dashboard': {
     slug: 'chatbridge-weather-dashboard',
     primaryFamily: 'reviewed-app-launch',
@@ -183,8 +191,10 @@ export function getChatBridgeManualSmokeFixtureMode(fixtureId: string): ManualSm
               ? 'Supported desktop smoke fixture covering the Drawing Kit doodle game, checkpoint continuity, and follow-up chat.'
             : fixtureId === 'flashcard-studio-study-mode'
               ? 'Supported desktop smoke fixture covering Flashcard Studio study mode, confidence marking, and bounded weak-card continuity.'
-            : fixtureId === 'weather-dashboard'
-              ? 'Supported desktop smoke fixture covering the Weather Dashboard launch, refresh path, and host-owned follow-up summary.'
+              : fixtureId === 'flashcard-studio-drive-resume'
+                ? 'Supported desktop smoke fixture covering the Flashcard Studio Drive reconnect, save or reopen controls, and host-owned resume continuity.'
+              : fixtureId === 'weather-dashboard'
+                ? 'Supported desktop smoke fixture covering the Weather Dashboard launch, refresh path, and host-owned follow-up summary.'
             : fixtureId === 'platform-recovery'
               ? 'Supported desktop smoke fixture covering platform-side failure recovery.'
               : fixtureId === 'degraded-completion-recovery'

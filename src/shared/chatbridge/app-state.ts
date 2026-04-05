@@ -129,6 +129,9 @@ function buildFlashcardStudioDigest(part: MessageAppPart): ChatBridgeAppStateDig
             ...(weakPrompts.length > 0 ? [`Needs review: ${weakPrompts.join(' | ')}`] : []),
           ]
         : []),
+      `Drive: ${snapshot.drive.statusText}`,
+      ...(snapshot.drive.lastSavedDeckName ? [`Saved deck: ${snapshot.drive.lastSavedDeckName}`] : []),
+      ...(snapshot.drive.recentDecks.length > 0 ? [`Recent decks: ${snapshot.drive.recentDecks.length}`] : []),
       ...(previewCards.length > 0 ? [`Preview: ${previewCards.join(' | ')}`] : ['Preview: no cards yet']),
     ],
   }

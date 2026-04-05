@@ -72,6 +72,7 @@ describe('preset session backfill', () => {
       `${CHATBRIDGE_LIVE_SEED_PREFIX} Chess mid-game board context`,
       `${CHATBRIDGE_LIVE_SEED_PREFIX} Drawing Kit doodle dare`,
       `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio study mode`,
+      `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio Drive resume`,
       `${CHATBRIDGE_LIVE_SEED_PREFIX} Weather dashboard`,
       `${CHATBRIDGE_LIVE_SEED_PREFIX} Chess runtime`,
       `${CHATBRIDGE_LIVE_SEED_PREFIX} Runtime + route receipt`,

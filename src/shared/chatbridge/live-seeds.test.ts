@@ -4,6 +4,7 @@ import {
   buildChatBridgeChessMidGameSessionFixture,
   buildChatBridgeDegradedCompletionRecoverySessionFixture,
   buildChatBridgeDrawingKitDoodleDareSessionFixture,
+  buildChatBridgeFlashcardStudioDriveResumeSessionFixture,
   buildChatBridgeFlashcardStudioStudySessionFixture,
   buildChatBridgeWeatherDashboardSessionFixture,
   buildChatBridgePlatformRecoverySessionFixture,
@@ -175,6 +176,32 @@ describe('chatbridge live seed fixtures', () => {
     expect(fixture.chatBridgeAppRecords?.events).toHaveLength(2)
   })
 
+  it('builds a Flashcard Studio Drive resume fixture with explicit reconnect metadata', () => {
+    const fixture = buildChatBridgeFlashcardStudioDriveResumeSessionFixture()
+    const assistantMessage = fixture.messages.find((message) => message.id === 'msg-flashcard-drive-assistant')
+    const appPart = assistantMessage?.contentParts.find((part) => part.type === 'app')
+
+    expect(appPart && appPart.type === 'app' ? appPart.appId : undefined).toBe('flashcard-studio')
+    expect(appPart && appPart.type === 'app' ? appPart.lifecycle : undefined).toBe('ready')
+    expect(appPart && appPart.type === 'app' ? appPart.snapshot : undefined).toMatchObject({
+      mode: 'study',
+      drive: {
+        status: 'needs-auth',
+        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        recentDecks: [
+          {
+            deckId: 'drive-deck-biology-review',
+          },
+        ],
+      },
+    })
+    expect(fixture.chatBridgeAppRecords?.instances[0]).toMatchObject({
+      appId: 'flashcard-studio',
+      status: 'ready',
+    })
+    expect(fixture.chatBridgeAppRecords?.events).toHaveLength(2)
+  })
+
   it('builds a Weather Dashboard fixture with a ready reviewed launch surface and restartable continuity', () => {
     const fixture = buildChatBridgeWeatherDashboardSessionFixture()
     const assistantMessage = fixture.messages.find((message) => message.id === 'msg-weather-assistant')
@@ -206,6 +233,7 @@ describe('chatbridge live seed fixtures', () => {
       'chess-mid-game-board-context',
       'drawing-kit-doodle-dare',
       'flashcard-studio-study-mode',
+      'flashcard-studio-drive-resume',
       'weather-dashboard',
       'chess-runtime',
       'runtime-and-route-receipt',
@@ -216,6 +244,10 @@ describe('chatbridge live seed fixtures', () => {
       smokeSupport: 'supported',
     })
     expect(fixtures.find((fixture) => fixture.id === 'flashcard-studio-study-mode')).toMatchObject({
+      fixtureRole: 'active-flagship',
+      smokeSupport: 'supported',
+    })
+    expect(fixtures.find((fixture) => fixture.id === 'flashcard-studio-drive-resume')).toMatchObject({
       fixtureRole: 'active-flagship',
       smokeSupport: 'supported',
     })

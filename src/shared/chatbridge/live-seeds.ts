@@ -1995,6 +1995,74 @@ export function buildChatBridgeFlashcardStudioStudySessionFixture(): Omit<Sessio
   }
 }
 
+export function buildChatBridgeFlashcardStudioDriveResumeSessionFixture(): Omit<Session, 'id'> {
+  const request = 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.'
+  const savedDeckName = 'Biology review.chatbridge-flashcards.json'
+  const snapshot = createFlashcardStudioAppSnapshot({
+    request,
+    deckTitle: 'Biology review',
+    mode: 'study',
+    studyStatus: 'studying',
+    cards: [
+      {
+        cardId: 'card-1',
+        prompt: 'What does the mitochondria do?',
+        answer: 'It helps the cell produce energy.',
+      },
+      {
+        cardId: 'card-2',
+        prompt: 'What is photosynthesis?',
+        answer: 'Plants use sunlight to make food.',
+      },
+      {
+        cardId: 'card-3',
+        prompt: 'What is cellular respiration?',
+        answer: 'Cells convert glucose and oxygen into usable energy.',
+      },
+    ],
+    selectedCardId: 'card-3',
+    studyPosition: 2,
+    revealedCardId: 'card-3',
+    studyMarks: [
+      { cardId: 'card-1', confidence: 'easy' },
+      { cardId: 'card-2', confidence: 'hard' },
+    ],
+    drive: {
+      status: 'needs-auth',
+      recentDecks: [
+        {
+          deckId: 'drive-deck-biology-review',
+          deckName: savedDeckName,
+          modifiedAt: 1_717_000_100_000,
+          lastOpenedAt: 1_717_000_200_000,
+        },
+      ],
+      lastSavedDeckId: 'drive-deck-biology-review',
+      lastSavedDeckName: savedDeckName,
+      lastSavedAt: 1_717_000_100_000,
+    },
+    lastAction: 'revealed-card',
+    lastUpdatedAt: 3,
+  })
+
+  return {
+    name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio Drive resume`,
+    type: 'chat',
+    threadName: 'Flashcard Studio Drive Resume',
+    messages: [
+      createTextMessage(
+        'msg-flashcard-drive-system',
+        'system',
+        'Keep Flashcard follow-up grounded in the host-owned Drive resume metadata, study counts, and weak-card prompts instead of raw answer text or Drive payloads.',
+        1
+      ),
+      createTextMessage('msg-flashcard-drive-user', 'user', request, 2),
+      createFlashcardStudioRuntimeMessage('msg-flashcard-drive-assistant', 3, snapshot),
+    ],
+    chatBridgeAppRecords: createSeededFlashcardStudioAppRecords(snapshot),
+  }
+}
+
 export function buildChatBridgeWeatherDashboardSessionFixture(): Omit<Session, 'id'> {
   const request = 'Open Weather Dashboard for Chicago and show the forecast.'
   const snapshot = createWeatherDashboardReadySnapshot({
@@ -2322,6 +2390,33 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
         },
       ],
       sessionInput: buildChatBridgeFlashcardStudioStudySessionFixture(),
+    },
+    {
+      id: 'flashcard-studio-drive-resume',
+      name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio Drive resume`,
+      description:
+        'Seeds Flashcard Studio with bounded Drive resume metadata so you can reconnect Google Drive, reopen the saved deck, and confirm the host keeps auth and persistence outside the reviewed runtime.',
+      fixtureRole: 'active-flagship',
+      smokeSupport: 'supported',
+      coverage: ['Flashcard Drive auth rail', 'Drive save and resume metadata', 'Host-owned reconnect flow'],
+      auditSteps: [
+        {
+          action: 'Open the seeded Flashcard Studio Drive resume session and inspect the host-owned Drive rail above the study card.',
+          expected:
+            'The inline shell shows `Reconnect Drive to resume`, a recent saved deck entry, and the regular study card beneath it instead of hiding Drive state inside the embedded runtime.',
+        },
+        {
+          action: 'Click `Connect Drive` and complete the Google consent flow when prompted.',
+          expected:
+            'The same inline shell stays mounted, the status changes to `Drive connected`, and the save or reopen controls remain host-owned instead of moving auth into the iframe.',
+        },
+        {
+          action: 'Click `Open recent` for the saved Biology deck after Drive is connected.',
+          expected:
+            'The deck reloads inside the same thread with the saved study progress restored, and later chat remains grounded in weak-card prompts plus Drive resume metadata.',
+        },
+      ],
+      sessionInput: buildChatBridgeFlashcardStudioDriveResumeSessionFixture(),
     },
     {
       id: 'weather-dashboard',

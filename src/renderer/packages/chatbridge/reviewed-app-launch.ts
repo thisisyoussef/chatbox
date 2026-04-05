@@ -38,6 +38,7 @@ import type { Message, MessageAppPart, MessageContentParts, MessageToolCallPart,
 import { Chess } from 'chess.js'
 import { z } from 'zod'
 import { createModelDependencies } from '@/adapters'
+import { updateSessionWithMessages } from '@/stores/chatStore'
 import { createChatBridgeAppRecordStore } from './app-records'
 import { buildChessMessageAppPart } from './chess-session-state'
 import { describeImageData } from '../model-calls/preprocess'
@@ -87,6 +88,13 @@ type ReviewedAppLaunchEventInput = ReviewedAppLaunchSessionInput & {
 
 type ReviewedAppLaunchRecoveryInput = ReviewedAppLaunchSessionInput & {
   contract: ChatBridgeRecoveryContract
+}
+
+type ReviewedAppLaunchHostSnapshotInput = ReviewedAppLaunchSessionInput & {
+  snapshot: Record<string, unknown>
+  eventKind?: 'state.updated' | 'auth.requested' | 'auth.linked'
+  payload?: Record<string, unknown>
+  summaryForModel?: string
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -648,6 +656,88 @@ export function applyReviewedAppLaunchBridgeEventToSession(session: Session, inp
   }
 }
 
+export function applyReviewedAppLaunchHostSnapshotToSession(session: Session, input: ReviewedAppLaunchHostSnapshotInput) {
+  const bridgeSessionId = input.part.bridgeSessionId
+  if (!bridgeSessionId) {
+    throw new Error(`Reviewed app ${input.part.appInstanceId} is missing bridgeSessionId for host snapshot persistence.`)
+  }
+
+  const { launch, store } = ensureLaunchRecordStore(session, input.part, bridgeSessionId, input)
+  const readyInstance = store.getInstance(input.part.appInstanceId)
+
+  if (readyInstance?.status === 'launching') {
+    const readyResult = store.recordHostEvent({
+      appInstanceId: input.part.appInstanceId,
+      kind: 'bridge.ready',
+      nextStatus: 'ready',
+      bridgeSessionId,
+      createdAt: input.now?.() ?? Date.now(),
+      snapshot: input.snapshot,
+      payload: {
+        source: 'reviewed-app-host-snapshot',
+      },
+    })
+
+    if (!readyResult.accepted) {
+      throw new Error(`Failed to record reviewed app ready event from host snapshot: ${readyResult.reason}`)
+    }
+  }
+
+  const eventKind = input.eventKind ?? 'state.updated'
+  const result = store.recordHostEvent({
+    appInstanceId: input.part.appInstanceId,
+    kind: eventKind,
+    nextStatus: 'active',
+    bridgeSessionId,
+    createdAt: input.now?.() ?? Date.now(),
+    snapshot: input.snapshot,
+    payload: input.payload,
+    summaryForModel: input.summaryForModel,
+  })
+
+  if (!result.accepted) {
+    throw new Error(`Failed to record reviewed app host snapshot event: ${result.reason}`)
+  }
+
+  const nextSession = updateSessionMessageAppPart(
+    {
+      ...session,
+      chatBridgeAppRecords: store.snapshot(),
+    },
+    input.messageId,
+    input.part.appInstanceId,
+    (part) => {
+      const summary =
+        input.summaryForModel ?? getBridgeSnapshotSummary(input.snapshot) ?? part.summaryForModel ?? part.summary ?? launch.summary
+
+      const description =
+        eventKind === 'auth.requested'
+          ? `${launch.appName} is waiting on a host-managed auth step inside the thread.`
+          : eventKind === 'auth.linked'
+            ? `${launch.appName} linked a host-managed auth grant and stayed inside the thread.`
+            : `${launch.appName} is active inside the reviewed host shell and remains part of the thread.`
+
+      return {
+        ...part,
+        lifecycle: 'active',
+        bridgeSessionId,
+        summary,
+        summaryForModel: summary,
+        snapshot: input.snapshot,
+        title: launch.appName,
+        description,
+        statusText: getBridgeSnapshotStatusText(input.snapshot) ?? part.statusText ?? 'Running',
+        error: undefined,
+      }
+    }
+  )
+
+  return {
+    ...nextSession,
+    chatBridgeAppRecords: store.snapshot(),
+  }
+}
+
 export function applyReviewedAppLaunchRecoveryToSession(session: Session, input: ReviewedAppLaunchRecoveryInput) {
   const bridgeSessionId = input.part.bridgeSessionId ?? input.contract.correlation.bridgeSessionId
   const { launch, store } = ensureLaunchRecordStore(session, input.part, bridgeSessionId, input)
@@ -710,7 +800,6 @@ export function applyReviewedAppLaunchRecoveryToSession(session: Session, input:
 export async function persistReviewedAppLaunchBootstrap(
   input: ReviewedAppLaunchBootstrapInput & { sessionId: string }
 ) {
-  const { updateSessionWithMessages } = await import('@/stores/chatStore')
   return await updateSessionWithMessages(input.sessionId, (session) => {
     if (!session) {
       throw new Error(`Session ${input.sessionId} not found while bootstrapping reviewed app launch.`)
@@ -721,7 +810,6 @@ export async function persistReviewedAppLaunchBootstrap(
 }
 
 export async function persistReviewedAppLaunchBridgeReady(input: ReviewedAppLaunchReadyInput & { sessionId: string }) {
-  const { updateSessionWithMessages } = await import('@/stores/chatStore')
   return await updateSessionWithMessages(input.sessionId, (session) => {
     if (!session) {
       throw new Error(`Session ${input.sessionId} not found while recording reviewed app ready state.`)
@@ -742,7 +830,6 @@ export async function persistReviewedAppLaunchBridgeEvent(input: ReviewedAppLaun
     }
   }
 
-  const { updateSessionWithMessages } = await import('@/stores/chatStore')
   return await updateSessionWithMessages(input.sessionId, (session) => {
     if (!session) {
       throw new Error(`Session ${input.sessionId} not found while recording reviewed app bridge event.`)
@@ -755,8 +842,17 @@ export async function persistReviewedAppLaunchBridgeEvent(input: ReviewedAppLaun
   })
 }
 
+export async function persistReviewedAppLaunchHostSnapshot(input: ReviewedAppLaunchHostSnapshotInput & { sessionId: string }) {
+  return await updateSessionWithMessages(input.sessionId, (session) => {
+    if (!session) {
+      throw new Error(`Session ${input.sessionId} not found while recording reviewed app host snapshot.`)
+    }
+
+    return applyReviewedAppLaunchHostSnapshotToSession(session, input)
+  })
+}
+
 export async function persistReviewedAppLaunchRecovery(input: ReviewedAppLaunchRecoveryInput & { sessionId: string }) {
-  const { updateSessionWithMessages } = await import('@/stores/chatStore')
   return await updateSessionWithMessages(input.sessionId, (session) => {
     if (!session) {
       throw new Error(`Session ${input.sessionId} not found while recording reviewed app recovery state.`)
