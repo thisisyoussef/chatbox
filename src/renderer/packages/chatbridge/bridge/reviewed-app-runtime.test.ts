@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createDrawingKitAppSnapshot } from '@shared/chatbridge'
+import { createDrawingKitAppSnapshot, createFlashcardStudioAppSnapshot } from '@shared/chatbridge'
 import { createReviewedAppLaunchRuntimeMarkup } from './reviewed-app-runtime'
 
 describe('createReviewedAppLaunchRuntimeMarkup', () => {
@@ -67,5 +67,45 @@ describe('createReviewedAppLaunchRuntimeMarkup', () => {
     expect(markup).toContain('checkpointed')
     expect(markup).not.toContain('Chat handoff')
     expect(markup).not.toContain('Round bank')
+  })
+
+  it('builds a Flashcard Studio runtime with deck-authoring controls and completion hooks', () => {
+    const markup = createReviewedAppLaunchRuntimeMarkup(
+      {
+        schemaVersion: 1,
+        appId: 'flashcard-studio',
+        appName: 'Flashcard Studio',
+        appVersion: '0.1.0',
+        toolName: 'flashcard_studio_open',
+        capability: 'open',
+        summary: 'Prepared the reviewed Flashcard Studio request for the host-owned launch path.',
+        request: 'Open Flashcard Studio and help me make biology flashcards.',
+        uiEntry: 'https://apps.example.com/flashcard-studio',
+        origin: 'https://apps.example.com',
+      },
+      createFlashcardStudioAppSnapshot({
+        deckTitle: 'Biology review',
+        cards: [
+          {
+            cardId: 'card-1',
+            prompt: 'What does the mitochondria do?',
+            answer: 'It helps the cell produce energy.',
+          },
+        ],
+        selectedCardId: 'card-1',
+        lastAction: 'created-card',
+        lastUpdatedAt: 5,
+      })
+    )
+
+    expect(markup).toContain('data-flashcard-runtime="true"')
+    expect(markup).toContain('Build a study deck directly in the thread')
+    expect(markup).toContain('Add card')
+    expect(markup).toContain('Save edits')
+    expect(markup).toContain('Move up')
+    expect(markup).toContain('Return deck to chat')
+    expect(markup).toContain('app.complete')
+    expect(markup).toContain('Flashcard Studio')
+    expect(markup).toContain('Biology review')
   })
 })

@@ -11,10 +11,11 @@ describe('default reviewed app catalog', () => {
     clearReviewedAppRegistry()
   })
 
-  it('defaults the active reviewed catalog to Chess, Drawing Kit, and Weather Dashboard', () => {
+  it('defaults the active reviewed catalog to Chess, Drawing Kit, Flashcard Studio, and Weather Dashboard', () => {
     expect(getDefaultReviewedAppCatalogEntries().map((entry) => entry.manifest.appId)).toEqual([
       'chess',
       'drawing-kit',
+      'flashcard-studio',
       'weather-dashboard',
     ])
   })
@@ -32,6 +33,7 @@ describe('default reviewed app catalog', () => {
     expect(getReviewedAppCatalog().map((entry) => entry.manifest.appId)).toEqual([
       'chess',
       'drawing-kit',
+      'flashcard-studio',
       'weather-dashboard',
     ])
   })

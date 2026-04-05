@@ -3,6 +3,7 @@ import {
   type BridgeReadyEvent,
   createChatBridgeRuntimeCrashRecoveryContract,
   DRAWING_KIT_APP_ID,
+  FLASHCARD_STUDIO_APP_ID,
   WEATHER_DASHBOARD_APP_ID,
 } from '@shared/chatbridge'
 import { CHATBRIDGE_LANGSMITH_PROJECT_NAME } from '@shared/models/tracing'
@@ -43,6 +44,7 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
   const launch = readChatBridgeReviewedAppLaunch(part.values)
   const snapshot = readSnapshotRecord(part.snapshot)
   const isDrawingKit = part.appId === DRAWING_KIT_APP_ID
+  const isFlashcardStudio = part.appId === FLASHCARD_STUDIO_APP_ID
   const isWeatherDashboard = part.appId === WEATHER_DASHBOARD_APP_ID
 
   if (!runtimeMarkupRef.current || runtimeMarkupRef.current.appInstanceId !== part.appInstanceId) {
@@ -285,7 +287,7 @@ export function ReviewedAppLaunchSurface({ part, sessionId, messageId }: Reviewe
       className="w-full border-none"
       style={{
         height: '100%',
-        minHeight: isDrawingKit ? 560 : 260,
+        minHeight: isDrawingKit ? 560 : isFlashcardStudio ? 620 : 260,
       }}
       onLoad={handleLoad}
     />

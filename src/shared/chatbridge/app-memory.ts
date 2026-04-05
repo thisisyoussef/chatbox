@@ -3,6 +3,7 @@ import { ChatBridgeCompletionPayloadSchema } from './completion'
 import { getChatBridgeDebateArenaState, getChatBridgeDebateArenaSummaryForModel } from './debate-arena'
 import { normalizeChatBridgeCompletionSummaryForModel } from './summary'
 import { ChessAppSnapshotSchema, getChessSummary } from './apps/chess'
+import { getFlashcardStudioSummary, parseFlashcardStudioAppSnapshot } from './apps/flashcard-studio'
 import {
   buildChatBridgeAppStateDigest,
   describeChatBridgeAppScreenshot,
@@ -87,6 +88,11 @@ export function getChatBridgeAppSummaryForModel(part: MessageAppPart): string | 
       },
       debateArenaState
     )
+  }
+
+  const flashcardSnapshot = parseFlashcardStudioAppSnapshot(part.snapshot)
+  if (flashcardSnapshot) {
+    return getFlashcardStudioSummary(flashcardSnapshot)
   }
 
   return null

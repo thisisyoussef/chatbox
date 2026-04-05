@@ -2,6 +2,7 @@ import type { ReviewedAppCatalogEntry } from './manifest'
 import { ReviewedAppCatalogEntrySchema } from './manifest'
 import { defineReviewedApps, getReviewedAppCatalog } from './registry'
 import { CHATBRIDGE_STORY_BUILDER_APP_ID } from './story-builder'
+import { FLASHCARD_STUDIO_APP_ID, FLASHCARD_STUDIO_APP_NAME } from './apps/flashcard-studio'
 
 export type ReviewedAppCatalogTrack = 'active-flagship' | 'legacy-reference'
 
@@ -14,6 +15,7 @@ export const CHATBRIDGE_CHESS_APP_ID = 'chess'
 export const CHATBRIDGE_CHESS_TOOL_NAME = 'chess_prepare_session'
 export const CHATBRIDGE_DRAWING_KIT_APP_ID = 'drawing-kit'
 export const CHATBRIDGE_DRAWING_KIT_TOOL_NAME = 'drawing_kit_open'
+export const CHATBRIDGE_FLASHCARD_STUDIO_TOOL_NAME = 'flashcard_studio_open'
 export const CHATBRIDGE_WEATHER_DASHBOARD_APP_ID = 'weather-dashboard'
 export const CHATBRIDGE_WEATHER_DASHBOARD_TOOL_NAME = 'weather_dashboard_open'
 export const CHATBRIDGE_DEBATE_ARENA_APP_ID = 'debate-arena'
@@ -206,6 +208,97 @@ const REVIEWED_APP_CATALOG_DESCRIPTORS: ReviewedAppCatalogDescriptor[] = [
         },
         healthcheck: {
           url: 'https://apps.example.com/drawing-kit/healthz',
+          intervalMs: 30_000,
+          timeoutMs: 2_000,
+        },
+      },
+      approval: {
+        status: 'approved',
+        reviewedAt: 1_711_930_000_000,
+        reviewedBy: 'platform-review',
+        catalogVersion: 2,
+      },
+    }),
+  },
+  {
+    track: 'active-flagship',
+    entry: parseCatalogEntry({
+      manifest: {
+        appId: FLASHCARD_STUDIO_APP_ID,
+        name: FLASHCARD_STUDIO_APP_NAME,
+        version: '0.1.0',
+        protocolVersion: 1,
+        origin: 'https://apps.example.com',
+        uiEntry: 'https://apps.example.com/flashcard-studio',
+        authMode: 'none',
+        permissions: [
+          {
+            id: 'session.context.read',
+            resource: 'chat.session',
+            access: 'read',
+            required: true,
+            purpose: 'Open Flashcard Studio with the bounded study request inside the host-owned shell.',
+          },
+        ],
+        toolSchemas: [
+          {
+            name: CHATBRIDGE_FLASHCARD_STUDIO_TOOL_NAME,
+            title: 'Open Flashcard Studio',
+            description:
+              'Launch Flashcard Studio to create, edit, reorder, and delete flashcards for a study deck directly inside the thread.',
+            schemaVersion: 1,
+            inputSchema: {
+              type: 'object',
+              properties: {
+                request: {
+                  type: 'string',
+                  description: 'The user-facing request that should open Flashcard Studio.',
+                  minLength: 1,
+                },
+              },
+              required: ['request'],
+            },
+            outputSchema: {
+              type: 'object',
+              properties: {
+                appId: { type: 'string' },
+                appName: { type: 'string' },
+                capability: { type: 'string' },
+                launchReady: { type: 'boolean' },
+                summary: { type: 'string' },
+              },
+              required: ['appId', 'appName', 'capability', 'launchReady', 'summary'],
+            },
+          },
+        ],
+        supportedEvents: ['host.init', 'host.invokeTool', 'app.ready', 'app.state', 'app.complete', 'app.error'],
+        completionModes: ['summary', 'state'],
+        timeouts: {
+          launchMs: 10_000,
+          idleMs: 120_000,
+          completionMs: 10_000,
+        },
+        safetyMetadata: {
+          reviewed: true,
+          sandbox: 'native-shell',
+          handlesStudentData: true,
+          requiresTeacherApproval: false,
+        },
+        launchSurfaces: {
+          'desktop-electron': {
+            sandbox: 'hosted-iframe',
+          },
+          'web-browser': {
+            sandbox: 'hosted-iframe',
+          },
+        },
+        tenantAvailability: {
+          default: 'enabled',
+          allow: [],
+          deny: [],
+        },
+        healthcheck: {
+          url: 'https://apps.example.com/flashcard-studio/healthz',
           intervalMs: 30_000,
           timeoutMs: 2_000,
         },

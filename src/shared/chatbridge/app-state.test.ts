@@ -9,6 +9,7 @@ import {
 } from './app-state'
 import { createInitialChessAppSnapshot } from './apps/chess'
 import { createDrawingKitAppSnapshot } from './apps/drawing-kit'
+import { createFlashcardStudioAppSnapshot } from './apps/flashcard-studio'
 
 function createPart(overrides: Partial<MessageAppPart> = {}): MessageAppPart {
   return {
@@ -117,6 +118,42 @@ describe('chatbridge app state helpers', () => {
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Visible board: Visible drawing:')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('blue brush stroke')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('star stamp')
+  })
+
+  it('builds a bounded digest for flashcard studio snapshots', () => {
+    const digest = buildChatBridgeAppStateDigest(
+      createPart({
+        appId: 'flashcard-studio',
+        appName: 'Flashcard Studio',
+        snapshot: createFlashcardStudioAppSnapshot({
+          deckTitle: 'Science review',
+          cards: [
+            {
+              cardId: 'card-1',
+              prompt: 'What does the mitochondria do?',
+              answer: 'It helps the cell produce energy.',
+            },
+            {
+              cardId: 'card-2',
+              prompt: 'What is photosynthesis?',
+              answer: 'Plants use sunlight to make food.',
+            },
+          ],
+          selectedCardId: 'card-2',
+          lastAction: 'updated-card',
+          lastUpdatedAt: 3_000,
+        }),
+      })
+    )
+
+    expect(digest).toMatchObject({
+      kind: 'flashcard-studio',
+    })
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Deck: Science review')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Cards: 2')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('What does the mitochondria do?')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('What is photosynthesis?')
+    expect(formatChatBridgeAppStateDigest(digest)).not.toContain('Plants use sunlight to make food.')
   })
 
   it('stores only the latest bounded set of app-linked screenshots', () => {

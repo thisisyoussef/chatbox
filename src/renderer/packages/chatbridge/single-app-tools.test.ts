@@ -155,6 +155,43 @@ describe('ChatBridge reviewed single-app tools', () => {
     })
   })
 
+  it('creates the approved Flashcard Studio host tool and executes it through the host contract', async () => {
+    const prompt = 'Open Flashcard Studio and help me make biology flashcards.'
+    const { selection, tools } = createReviewedSingleAppToolSet({
+      messages: [createMessage('user', prompt)],
+    })
+
+    expect(selection).toMatchObject({
+      status: 'matched',
+      appId: 'flashcard-studio',
+      toolName: 'flashcard_studio_open',
+    })
+    expect(Object.keys(tools)).toEqual(['flashcard_studio_open'])
+
+    const preparedTools = prepareToolsForExecution(tools, 'session-sc-006a')
+    const result = await preparedTools.flashcard_studio_open.execute?.(
+      {
+        request: prompt,
+      },
+      getExecutionOptions('tool-flashcard-success')
+    )
+
+    expect(result).toMatchObject({
+      kind: 'chatbridge.host.tool.record.v1',
+      appId: 'flashcard-studio',
+      toolName: 'flashcard_studio_open',
+      executionAuthority: 'host',
+      outcome: {
+        status: 'success',
+        result: {
+          appId: 'flashcard-studio',
+          appName: 'Flashcard Studio',
+          launchReady: true,
+        },
+      },
+    })
+  })
+
   it('creates the approved Weather Dashboard host tool and preserves the location hint through the host contract', async () => {
     const prompt = 'Open Weather Dashboard for Chicago and show the forecast.'
     const { selection, tools } = createReviewedSingleAppToolSet({

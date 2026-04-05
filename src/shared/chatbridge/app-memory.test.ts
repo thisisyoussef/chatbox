@@ -8,6 +8,7 @@ import {
 } from './app-memory'
 import { createChessAppSnapshotFromGame } from './apps/chess'
 import { createDrawingKitAppSnapshot } from './apps/drawing-kit'
+import { createFlashcardStudioAppSnapshot } from './apps/flashcard-studio'
 
 function createAppPart(overrides: Partial<MessageAppPart> = {}): MessageAppPart {
   return {
@@ -284,5 +285,65 @@ describe('selectChatBridgeAppContexts', () => {
     expect(prompt).toContain('ChatBridge primary app continuity context')
     expect(prompt).toContain('Summary: Chess board ready after Qe7. White to move.')
     expect(prompt).toContain('Recent moves: e4, e5, Qh5, Qe7')
+  })
+
+  it('derives bounded flashcard continuity from a validated snapshot when summaryForModel is missing', () => {
+    const snapshot = createFlashcardStudioAppSnapshot({
+      deckTitle: 'Science review',
+      cards: [
+        {
+          cardId: 'card-1',
+          prompt: 'What does the mitochondria do?',
+          answer: 'It helps the cell produce energy.',
+        },
+        {
+          cardId: 'card-2',
+          prompt: 'What is photosynthesis?',
+          answer: 'Plants use sunlight to make food.',
+        },
+      ],
+      selectedCardId: 'card-1',
+      lastAction: 'created-card',
+      lastUpdatedAt: 6_000,
+    })
+
+    const messages: Message[] = [
+      {
+        id: 'flashcard-active',
+        role: 'assistant',
+        contentParts: [
+          {
+            type: 'app',
+            appId: 'flashcard-studio',
+            appName: 'Flashcard Studio',
+            appInstanceId: 'flashcard-instance-1',
+            lifecycle: 'active',
+            summary: 'Raw flashcard summary should not be the continuity source.',
+            snapshot,
+          },
+        ],
+      },
+    ]
+
+    const contexts = selectChatBridgeAppContexts(messages)
+
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0]).toMatchObject({
+      appId: 'flashcard-studio',
+      appInstanceId: 'flashcard-instance-1',
+      lifecycle: 'active',
+      stateDigest: {
+        kind: 'flashcard-studio',
+      },
+    })
+    expect(contexts[0]?.summaryForModel).toContain('Science review')
+    expect(contexts[0]?.summaryForModel).toContain('2 cards')
+    expect(contexts[0]?.summaryForModel).not.toContain('Plants use sunlight to make food.')
+
+    const prompt = buildChatBridgeSelectedAppContextPrompt(messages)
+
+    expect(prompt).toContain('Flashcard Studio')
+    expect(prompt).toContain('Deck: Science review')
+    expect(prompt).toContain('Preview: 1. What does the mitochondria do? | 2. What is photosynthesis?')
   })
 })

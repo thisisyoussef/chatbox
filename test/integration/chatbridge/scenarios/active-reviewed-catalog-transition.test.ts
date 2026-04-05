@@ -46,16 +46,21 @@ describe('ChatBridge active reviewed catalog transition', () => {
     traceScenario('publishes the active flagship set and keeps legacy apps parked outside the default runtime', () => {
       const activeCatalog = ensureDefaultReviewedAppsRegistered()
 
-      expect(activeCatalog.map((entry) => entry.manifest.appId)).toEqual(['chess', 'drawing-kit', 'weather-dashboard'])
+      expect(activeCatalog.map((entry) => entry.manifest.appId)).toEqual([
+        'chess',
+        'drawing-kit',
+        'flashcard-studio',
+        'weather-dashboard',
+      ])
       expect(getLegacyReviewedAppCatalogEntries().map((entry) => entry.manifest.appId)).toEqual([
         'debate-arena',
         'story-builder',
       ])
     }))
 
-  it('routes explicit Drawing Kit and Weather requests through the active reviewed catalog while refusing legacy app names', () =>
+  it('routes explicit Drawing Kit, Flashcard Studio, and Weather requests through the active reviewed catalog while refusing legacy app names', () =>
     traceScenario(
-      'routes explicit Drawing Kit and Weather requests through the active reviewed catalog while refusing legacy app names',
+      'routes explicit Drawing Kit, Flashcard Studio, and Weather requests through the active reviewed catalog while refusing legacy app names',
       () => {
         const activeCatalog = ensureDefaultReviewedAppsRegistered()
         const candidates = toCandidates(activeCatalog)
@@ -63,6 +68,10 @@ describe('ChatBridge active reviewed catalog transition', () => {
         const drawingDecision = resolveReviewedAppRouteDecision(
           candidates,
           'Open Drawing Kit and start a sticky-note doodle dare.'
+        )
+        const flashcardDecision = resolveReviewedAppRouteDecision(
+          candidates,
+          'Open Flashcard Studio and help me make biology flashcards.'
         )
         const weatherDecision = resolveReviewedAppRouteDecision(
           candidates,
@@ -77,6 +86,11 @@ describe('ChatBridge active reviewed catalog transition', () => {
           kind: 'invoke',
           reasonCode: 'explicit-app-match',
           selectedAppId: 'drawing-kit',
+        })
+        expect(flashcardDecision).toMatchObject({
+          kind: 'invoke',
+          reasonCode: 'explicit-app-match',
+          selectedAppId: 'flashcard-studio',
         })
         expect(weatherDecision).toMatchObject({
           kind: 'invoke',

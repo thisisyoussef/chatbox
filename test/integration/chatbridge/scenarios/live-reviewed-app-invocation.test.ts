@@ -206,6 +206,43 @@ describe('ChatBridge live reviewed app invocation path', () => {
       )
     }))
 
+  it('launches Flashcard Studio from a live study-deck prompt through the reviewed app path', () =>
+    traceScenario('launches Flashcard Studio from a live study-deck prompt through the reviewed app path', async () => {
+      const prompt = 'Open Flashcard Studio and help me make biology flashcards.'
+      const { chat, model } = createToolCallingModelStub(() => ({
+        toolName: 'flashcard_studio_open',
+        args: {
+          request: prompt,
+        },
+      }))
+
+      const result = await streamText(model, {
+        sessionId: 'session-sc-006a-flashcards',
+        messages: [createTextMessage('msg-flashcard-user', 'user', prompt, 1)],
+        onResultChangeWithCancel: vi.fn(),
+      })
+
+      expect(chat).toHaveBeenCalledOnce()
+      expect(Object.keys(chat.mock.calls[0]?.[1]?.tools ?? {})).toEqual(['flashcard_studio_open'])
+      expect(findAppPart(result.result.contentParts)).toMatchObject({
+        appId: 'flashcard-studio',
+        appName: 'Flashcard Studio',
+        lifecycle: 'launching',
+      })
+      expect(langsmithMocks.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'chatbridge.routing.reviewed-app-decision',
+          parentRunId: 'renderer-run-1',
+          outputs: expect.objectContaining({
+            decisionKind: 'invoke',
+            selectedAppId: 'flashcard-studio',
+            selectionSource: 'route-decision',
+            toolNames: ['flashcard_studio_open'],
+          }),
+        })
+      )
+    }))
+
   it('keeps natural Chess prompts on the live reviewed Chess launch path', () =>
     traceScenario('keeps natural Chess prompts on the live reviewed Chess launch path', async () => {
       const fen = 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3'
