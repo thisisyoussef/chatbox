@@ -1,7 +1,11 @@
 import {
   DRAWING_KIT_APP_ID,
+  FLASHCARD_STUDIO_APP_ID,
   createInitialDrawingKitAppSnapshot,
+  createInitialFlashcardStudioAppSnapshot,
+  parseFlashcardStudioAppSnapshot,
   type DrawingKitAppSnapshot,
+  type FlashcardStudioAppSnapshot,
 } from '@shared/chatbridge'
 import type { ChatBridgeReviewedAppLaunch } from '../reviewed-app-launch'
 
@@ -1460,6 +1464,992 @@ function createDrawingKitRuntimeMarkup(launch: ChatBridgeReviewedAppLaunch, init
 </html>`
 }
 
+function createFlashcardStudioRuntimeMarkup(
+  launch: ChatBridgeReviewedAppLaunch,
+  initialSnapshot: FlashcardStudioAppSnapshot
+) {
+  const serializedLaunch = escapeInlineScriptValue(launch)
+  const serializedSnapshot = escapeInlineScriptValue(initialSnapshot)
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${launch.appName} runtime</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+        --paper: #fffdfa;
+        --paper-soft: #fff6e8;
+        --paper-strong: #ffe1b6;
+        --ink: #221b16;
+        --muted: #6d5f54;
+        --accent: #cb6b2b;
+        --accent-soft: #fff0e1;
+        --accent-strong: #f08a37;
+        --line: #e7cfb0;
+        --panel: rgba(255, 255, 255, 0.92);
+        --panel-soft: rgba(255, 248, 239, 0.95);
+        --selected: #fff3d5;
+        --selected-line: #f0b24f;
+        --success: #e6f7ee;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100%;
+        background:
+          radial-gradient(circle at top left, rgba(255, 204, 142, 0.45), transparent 34%),
+          linear-gradient(180deg, #fff7eb 0%, #fffdfa 100%);
+        color: var(--ink);
+      }
+
+      body {
+        box-sizing: border-box;
+        padding: 12px;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible {
+        outline: 3px solid rgba(240, 138, 55, 0.35);
+        outline-offset: 2px;
+      }
+
+      #reviewed-app-runtime-root {
+        height: 100%;
+      }
+
+      .flashcard-shell {
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: rgba(255, 253, 250, 0.97);
+        box-shadow: 0 24px 60px rgba(108, 72, 27, 0.1);
+        min-height: 560px;
+        box-sizing: border-box;
+        padding: 16px;
+      }
+
+      .flashcard-stack {
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        gap: 14px;
+        min-height: 528px;
+      }
+
+      .flashcard-strip,
+      .flashcard-status-strip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        padding: 12px 14px;
+        background: var(--panel-soft);
+      }
+
+      .flashcard-eyebrow {
+        margin: 0 0 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 11px;
+        color: var(--accent);
+      }
+
+      .flashcard-title {
+        margin: 0;
+        font-size: clamp(26px, 5vw, 34px);
+        line-height: 1.02;
+      }
+
+      .flashcard-subtitle {
+        margin: 8px 0 0;
+        max-width: 62ch;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .flashcard-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        border: 1px solid #efbe84;
+        background: #fff2df;
+        color: #8d4f19;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .flashcard-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .flashcard-button {
+        border-radius: 14px;
+        border: 1px solid #efbe84;
+        background: #fff4e6;
+        color: #7b4618;
+        padding: 10px 14px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .flashcard-button--primary {
+        background: var(--accent-strong);
+        border-color: var(--accent-strong);
+        color: white;
+      }
+
+      .flashcard-button[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .flashcard-workspace {
+        display: grid;
+        grid-template-columns: minmax(240px, 0.92fr) minmax(0, 1.45fr);
+        gap: 14px;
+        min-height: 0;
+      }
+
+      .flashcard-panel {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: var(--panel);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      .flashcard-panel h2 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .flashcard-panel-copy {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .flashcard-deck-list {
+        margin-top: 14px;
+        display: grid;
+        gap: 10px;
+        overflow: auto;
+        padding-right: 2px;
+      }
+
+      .flashcard-card-chip {
+        display: grid;
+        gap: 8px;
+        width: 100%;
+        text-align: left;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: white;
+        padding: 12px;
+      }
+
+      .flashcard-card-chip[data-selected="true"] {
+        background: var(--selected);
+        border-color: var(--selected-line);
+      }
+
+      .flashcard-card-topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .flashcard-card-index {
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--accent);
+      }
+
+      .flashcard-card-prompt {
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.3;
+      }
+
+      .flashcard-card-answer {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+
+      .flashcard-empty {
+        margin-top: 14px;
+        border: 1px dashed #e7caa5;
+        border-radius: 20px;
+        background: #fffaf3;
+        padding: 16px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .flashcard-form {
+        margin-top: 14px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .flashcard-field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .flashcard-field label {
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #8d4f19;
+      }
+
+      .flashcard-field input,
+      .flashcard-field textarea {
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 14px;
+        border: 1px solid #ecc99d;
+        background: white;
+        padding: 12px 14px;
+        color: var(--ink);
+      }
+
+      .flashcard-field textarea {
+        min-height: 180px;
+        resize: vertical;
+      }
+
+      .flashcard-editor-actions,
+      .flashcard-order-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .flashcard-order-actions {
+        margin-top: 2px;
+      }
+
+      .flashcard-inline-note {
+        margin-top: 12px;
+        border-radius: 16px;
+        background: #fff6ea;
+        color: #8d4f19;
+        padding: 10px 12px;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .flashcard-inline-note--success {
+        background: var(--success);
+        color: #17663e;
+      }
+
+      .flashcard-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @media (max-width: 860px) {
+        .flashcard-workspace {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="reviewed-app-runtime-root"></div>
+    <script>
+      const launch = ${serializedLaunch};
+      const initialSnapshot = ${serializedSnapshot};
+
+      (() => {
+        let bridgePort = null;
+        let currentEnvelope = null;
+        let nextSequence = 2;
+        const root = document.getElementById('reviewed-app-runtime-root');
+        const state = {
+          snapshot: JSON.parse(JSON.stringify(initialSnapshot)),
+          editor: {
+            prompt: '',
+            answer: '',
+          },
+          validationMessage: '',
+        };
+
+        function clone(value) {
+          return JSON.parse(JSON.stringify(value));
+        }
+
+        function normalizeWhitespace(value) {
+          return String(value || '').replace(/\\s+/g, ' ').trim();
+        }
+
+        function normalizeOptionalWhitespace(value) {
+          const trimmed = normalizeWhitespace(value);
+          return trimmed.length > 0 ? trimmed : undefined;
+        }
+
+        function clampLabel(value, maxLength) {
+          if (value.length <= maxLength) {
+            return value;
+          }
+          return value.slice(0, Math.max(0, maxLength - 1)).trimEnd() + '…';
+        }
+
+        function normalizeDeckTitle(value) {
+          return clampLabel(normalizeOptionalWhitespace(value) || 'Study deck', 80);
+        }
+
+        function summarizeCardPrompt(prompt) {
+          return clampLabel(normalizeWhitespace(prompt), 52);
+        }
+
+        function escapeHtml(value) {
+          return String(value || '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+        }
+
+        function getCards() {
+          return Array.isArray(state.snapshot.cards) ? state.snapshot.cards : [];
+        }
+
+        function getSelectedIndex() {
+          return getCards().findIndex((card) => card.cardId === state.snapshot.selectedCardId);
+        }
+
+        function getSelectedCard() {
+          return getCards().find((card) => card.cardId === state.snapshot.selectedCardId) || null;
+        }
+
+        function syncEditorFromSelection() {
+          const selectedCard = getSelectedCard();
+          if (!selectedCard) {
+            state.editor = {
+              prompt: '',
+              answer: '',
+            };
+            state.snapshot.selectedCardId = undefined;
+            return;
+          }
+
+          state.editor = {
+            prompt: selectedCard.prompt,
+            answer: selectedCard.answer,
+          };
+        }
+
+        function describeLastAction(action, selectedCard, cardCount) {
+          const selectedLabel = selectedCard ? '"' + summarizeCardPrompt(selectedCard.prompt) + '"' : 'the selected card';
+
+          if (action === 'created-card') {
+            return selectedCard ? 'Latest change: created ' + selectedLabel + '.' : 'Latest change: created a new card.';
+          }
+          if (action === 'updated-card') {
+            return selectedCard ? 'Latest change: updated ' + selectedLabel + '.' : 'Latest change: updated a card.';
+          }
+          if (action === 'deleted-card') {
+            return cardCount > 0
+              ? 'Latest change: deleted a card and kept the remaining deck in order.'
+              : 'Latest change: deleted the final card from the deck.';
+          }
+          if (action === 'moved-card-up') {
+            return selectedCard ? 'Latest change: moved ' + selectedLabel + ' earlier in the deck.' : 'Latest change: moved a card earlier in the deck.';
+          }
+          if (action === 'moved-card-down') {
+            return selectedCard ? 'Latest change: moved ' + selectedLabel + ' later in the deck.' : 'Latest change: moved a card later in the deck.';
+          }
+          if (action === 'selected-card') {
+            return selectedCard ? 'Current selection: ' + selectedLabel + '.' : 'A card is selected for editing.';
+          }
+          if (action === 'cleared-selection') {
+            return 'Composer reset and ready for a new card.';
+          }
+          return cardCount > 0 ? 'Deck restored and ready for edits.' : 'Deck initialized and ready for the first card.';
+        }
+
+        function buildStatusText(status, action, cardCount) {
+          if (status === 'complete') {
+            return cardCount > 0 ? 'Deck returned to chat' : 'Empty deck returned';
+          }
+          if (cardCount === 0) {
+            return 'No cards yet';
+          }
+          if (action === 'created-card') {
+            return 'Card created';
+          }
+          if (action === 'updated-card') {
+            return 'Card updated';
+          }
+          if (action === 'deleted-card') {
+            return 'Card deleted';
+          }
+          if (action === 'moved-card-up') {
+            return 'Card moved up';
+          }
+          if (action === 'moved-card-down') {
+            return 'Card moved down';
+          }
+          if (action === 'selected-card') {
+            return 'Editing selected card';
+          }
+          if (action === 'cleared-selection') {
+            return 'Ready for a new card';
+          }
+          return 'Deck ready';
+        }
+
+        function buildSummary(snapshot) {
+          const selectedCard = snapshot.cards.find((card) => card.cardId === snapshot.selectedCardId) || null;
+          const previewCards = snapshot.cards.slice(0, 4).map((card) => summarizeCardPrompt(card.prompt));
+          const actionSentence = describeLastAction(snapshot.lastAction, selectedCard, snapshot.cardCount);
+
+          if (snapshot.cardCount === 0) {
+            const base = snapshot.status === 'complete'
+              ? 'Flashcard Studio returned the deck "' + snapshot.deckTitle + '" to chat with no cards created.'
+              : 'Flashcard Studio is open on the deck "' + snapshot.deckTitle + '" with no cards yet.';
+            return normalizeWhitespace(base + ' ' + actionSentence + ' The empty state is explicit so later chat does not imply study progress.');
+          }
+
+          const previewSentence = 'Card preview: ' + previewCards.join('; ') + '.';
+          const selectedSentence = selectedCard
+            ? 'Selected card: "' + summarizeCardPrompt(selectedCard.prompt) + '".'
+            : 'No card is currently selected.';
+          const base = snapshot.status === 'complete'
+            ? 'Flashcard Studio returned the deck "' + snapshot.deckTitle + '" to chat with ' + snapshot.cardCount + ' cards.'
+            : 'Flashcard Studio is actively authoring the deck "' + snapshot.deckTitle + '" with ' + snapshot.cardCount + ' cards.';
+
+          return normalizeWhitespace(base + ' ' + previewSentence + ' ' + selectedSentence + ' ' + actionSentence);
+        }
+
+        function buildResumeHint(deckTitle, cardCount) {
+          if (cardCount === 0) {
+            return 'Reopen Flashcard Studio to add the first card to "' + deckTitle + '".';
+          }
+          return 'Reopen Flashcard Studio to keep editing "' + deckTitle + '" or start study mode later.';
+        }
+
+        function createSnapshot(status, lastAction) {
+          const cards = getCards()
+            .map((card) => ({
+              cardId: normalizeWhitespace(card.cardId),
+              prompt: normalizeWhitespace(card.prompt),
+              answer: normalizeWhitespace(card.answer),
+            }))
+            .filter((card) => card.cardId && card.prompt && card.answer)
+            .slice(0, 32);
+
+          const selectedCardId = cards.some((card) => card.cardId === state.snapshot.selectedCardId)
+            ? state.snapshot.selectedCardId
+            : undefined;
+          const deckTitle = normalizeDeckTitle(state.snapshot.deckTitle);
+          const nextSnapshot = {
+            schemaVersion: 1,
+            appId: 'flashcard-studio',
+            request: launch.request || undefined,
+            deckTitle,
+            status,
+            cardCount: cards.length,
+            cards,
+            selectedCardId,
+            lastAction,
+            statusText: buildStatusText(status, lastAction, cards.length),
+            summary: '',
+            resumeHint: buildResumeHint(deckTitle, cards.length),
+            lastUpdatedAt: Date.now(),
+          };
+
+          if (!selectedCardId) {
+            delete nextSnapshot.selectedCardId;
+          }
+
+          nextSnapshot.summary = buildSummary(nextSnapshot);
+          return nextSnapshot;
+        }
+
+        function sendBridgeEvent(kind, payload) {
+          if (!bridgePort || !currentEnvelope) {
+            return;
+          }
+
+          bridgePort.postMessage({
+            kind,
+            bridgeSessionId: currentEnvelope.bridgeSessionId,
+            appInstanceId: currentEnvelope.appInstanceId,
+            bridgeToken: currentEnvelope.bridgeToken,
+            sequence: nextSequence++,
+            ...payload,
+          });
+        }
+
+        function publishSnapshot(status, lastAction) {
+          const nextSnapshot = createSnapshot(status, lastAction);
+          state.snapshot = clone(nextSnapshot);
+          syncEditorFromSelection();
+          render();
+          sendBridgeEvent('app.state', {
+            idempotencyKey: lastAction + '-' + nextSnapshot.lastUpdatedAt,
+            snapshot: nextSnapshot,
+          });
+          return nextSnapshot;
+        }
+
+        function publishCompletion() {
+          const nextSnapshot = createSnapshot(getCards().length === 0 ? 'empty' : 'complete', state.snapshot.lastAction || 'initialized');
+          state.snapshot = clone(nextSnapshot);
+          render();
+          sendBridgeEvent('app.state', {
+            idempotencyKey: 'complete-state-' + nextSnapshot.lastUpdatedAt,
+            snapshot: nextSnapshot,
+          });
+          sendBridgeEvent('app.complete', {
+            idempotencyKey: 'complete-' + nextSnapshot.lastUpdatedAt,
+            completion: {
+              schemaVersion: 1,
+              status: 'success',
+              suggestedSummary: {
+                title: 'Flashcard deck returned to chat',
+                text: nextSnapshot.summary,
+                bullets: [
+                  'Deck: ' + nextSnapshot.deckTitle,
+                  'Cards: ' + nextSnapshot.cardCount,
+                  nextSnapshot.cardCount > 0
+                    ? 'Preview: ' + nextSnapshot.cards.slice(0, 3).map((card) => summarizeCardPrompt(card.prompt)).join(' | ')
+                    : 'Preview: no cards yet',
+                ],
+              },
+              outcomeData: {
+                appId: launch.appId,
+                deckTitle: nextSnapshot.deckTitle,
+                cardCount: nextSnapshot.cardCount,
+                selectedCardId: nextSnapshot.selectedCardId || null,
+              },
+              resumability: {
+                resumable: true,
+                checkpointId: 'flashcard-studio-' + nextSnapshot.lastUpdatedAt,
+                resumeHint: nextSnapshot.resumeHint,
+              },
+            },
+          });
+        }
+
+        function readComposerFromDom() {
+          const deckTitleInput = document.getElementById('deck-title-input');
+          const promptInput = document.getElementById('card-prompt-input');
+          const answerInput = document.getElementById('card-answer-input');
+
+          state.snapshot.deckTitle = normalizeDeckTitle(deckTitleInput ? deckTitleInput.value : state.snapshot.deckTitle);
+          state.editor.prompt = promptInput ? promptInput.value : state.editor.prompt;
+          state.editor.answer = answerInput ? answerInput.value : state.editor.answer;
+        }
+
+        function setValidationMessage(message) {
+          state.validationMessage = message;
+          render();
+        }
+
+        function requireEditorCard() {
+          readComposerFromDom();
+          const prompt = normalizeWhitespace(state.editor.prompt);
+          const answer = normalizeWhitespace(state.editor.answer);
+
+          if (!prompt || !answer) {
+            setValidationMessage('Add both a prompt and an answer before saving this card.');
+            return null;
+          }
+
+          return { prompt, answer };
+        }
+
+        function createCardId() {
+          return 'card-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        }
+
+        function clearComposer(publish) {
+          state.snapshot.selectedCardId = undefined;
+          state.editor = {
+            prompt: '',
+            answer: '',
+          };
+          state.validationMessage = '';
+          if (publish) {
+            publishSnapshot(getCards().length === 0 ? 'empty' : 'editing', 'cleared-selection');
+          } else {
+            render();
+          }
+        }
+
+        function selectCard(cardId) {
+          readComposerFromDom();
+          state.snapshot.selectedCardId = cardId;
+          state.validationMessage = '';
+          publishSnapshot('editing', 'selected-card');
+        }
+
+        function addCard() {
+          const editorCard = requireEditorCard();
+          if (!editorCard) {
+            return;
+          }
+
+          const cards = clone(getCards());
+          const card = {
+            cardId: createCardId(),
+            prompt: editorCard.prompt,
+            answer: editorCard.answer,
+          };
+          cards.push(card);
+          state.snapshot.cards = cards;
+          state.snapshot.selectedCardId = card.cardId;
+          state.validationMessage = 'Card created.';
+          publishSnapshot('editing', 'created-card');
+        }
+
+        function saveSelectedCard() {
+          const selectedIndex = getSelectedIndex();
+          if (selectedIndex < 0) {
+            setValidationMessage('Select a card before saving edits.');
+            return;
+          }
+
+          const editorCard = requireEditorCard();
+          if (!editorCard) {
+            return;
+          }
+
+          const cards = clone(getCards());
+          cards[selectedIndex] = {
+            ...cards[selectedIndex],
+            prompt: editorCard.prompt,
+            answer: editorCard.answer,
+          };
+          state.snapshot.cards = cards;
+          state.validationMessage = 'Card updated.';
+          publishSnapshot('editing', 'updated-card');
+        }
+
+        function deleteSelectedCard() {
+          const selectedIndex = getSelectedIndex();
+          if (selectedIndex < 0) {
+            setValidationMessage('Select a card before deleting it.');
+            return;
+          }
+
+          const cards = clone(getCards());
+          cards.splice(selectedIndex, 1);
+          state.snapshot.cards = cards;
+          const nextSelection = cards[selectedIndex] || cards[selectedIndex - 1] || null;
+          state.snapshot.selectedCardId = nextSelection ? nextSelection.cardId : undefined;
+          state.validationMessage = cards.length > 0 ? 'Card deleted.' : 'The deck is empty again.';
+          if (!nextSelection) {
+            state.editor = { prompt: '', answer: '' };
+          }
+          publishSnapshot(cards.length === 0 ? 'empty' : 'editing', 'deleted-card');
+        }
+
+        function moveSelected(offset) {
+          const selectedIndex = getSelectedIndex();
+          if (selectedIndex < 0) {
+            setValidationMessage('Select a card before reordering it.');
+            return;
+          }
+
+          const nextIndex = selectedIndex + offset;
+          const cards = clone(getCards());
+          if (nextIndex < 0 || nextIndex >= cards.length) {
+            setValidationMessage(offset < 0 ? 'That card is already at the top.' : 'That card is already at the bottom.');
+            return;
+          }
+
+          const [movedCard] = cards.splice(selectedIndex, 1);
+          cards.splice(nextIndex, 0, movedCard);
+          state.snapshot.cards = cards;
+          state.validationMessage = offset < 0 ? 'Card moved up.' : 'Card moved down.';
+          publishSnapshot('editing', offset < 0 ? 'moved-card-up' : 'moved-card-down');
+        }
+
+        function bindControls() {
+          const deckTitleInput = document.getElementById('deck-title-input');
+          const promptInput = document.getElementById('card-prompt-input');
+          const answerInput = document.getElementById('card-answer-input');
+
+          if (deckTitleInput) {
+            deckTitleInput.addEventListener('input', () => {
+              state.snapshot.deckTitle = normalizeDeckTitle(deckTitleInput.value);
+            });
+          }
+
+          if (promptInput) {
+            promptInput.addEventListener('input', () => {
+              state.editor.prompt = promptInput.value;
+            });
+          }
+
+          if (answerInput) {
+            answerInput.addEventListener('input', () => {
+              state.editor.answer = answerInput.value;
+            });
+          }
+
+          root.querySelectorAll('[data-select-card]').forEach((button) => {
+            button.addEventListener('click', () => {
+              const cardId = button.getAttribute('data-select-card');
+              if (cardId) {
+                selectCard(cardId);
+              }
+            });
+          });
+
+          const addButton = document.getElementById('flashcard-add-button');
+          addButton && addButton.addEventListener('click', addCard);
+
+          const saveButton = document.getElementById('flashcard-save-button');
+          saveButton && saveButton.addEventListener('click', saveSelectedCard);
+
+          const deleteButton = document.getElementById('flashcard-delete-button');
+          deleteButton && deleteButton.addEventListener('click', deleteSelectedCard);
+
+          const newCardButton = document.getElementById('flashcard-new-button');
+          newCardButton && newCardButton.addEventListener('click', () => clearComposer(true));
+
+          const moveUpButton = document.getElementById('flashcard-move-up-button');
+          moveUpButton && moveUpButton.addEventListener('click', () => moveSelected(-1));
+
+          const moveDownButton = document.getElementById('flashcard-move-down-button');
+          moveDownButton && moveDownButton.addEventListener('click', () => moveSelected(1));
+
+          const completeButton = document.getElementById('flashcard-complete-button');
+          completeButton && completeButton.addEventListener('click', publishCompletion);
+        }
+
+        function render() {
+          const snapshot = state.snapshot;
+          const cards = getCards();
+          const selectedIndex = getSelectedIndex();
+          const selectedCard = getSelectedCard();
+          const cardsMarkup = cards
+            .map((card, index) =>
+              '<button class="flashcard-card-chip" type="button" data-select-card="' +
+              escapeHtml(card.cardId) +
+              '" data-selected="' +
+              String(card.cardId === snapshot.selectedCardId) +
+              '">' +
+              '<div class="flashcard-card-topline">' +
+              '<span class="flashcard-card-index">Card ' + (index + 1) + '</span>' +
+              (card.cardId === snapshot.selectedCardId ? '<span class="flashcard-pill">Selected</span>' : '') +
+              '</div>' +
+              '<div class="flashcard-card-prompt">' + escapeHtml(summarizeCardPrompt(card.prompt)) + '</div>' +
+              '<div class="flashcard-card-answer">' + escapeHtml(clampLabel(normalizeWhitespace(card.answer), 84)) + '</div>' +
+              '</button>'
+            )
+            .join('');
+
+          const validationClass = state.validationMessage
+            ? (state.validationMessage.includes('created') || state.validationMessage.includes('updated') || state.validationMessage.includes('moved') || state.validationMessage.includes('empty again')
+                ? 'flashcard-inline-note flashcard-inline-note--success'
+                : 'flashcard-inline-note')
+            : 'flashcard-inline-note';
+
+          root.innerHTML =
+            '<article class="flashcard-shell" data-flashcard-runtime="true">' +
+            '<div class="flashcard-stack">' +
+            '<section class="flashcard-strip">' +
+            '<div>' +
+            '<p class="flashcard-eyebrow">Reviewed app bridge launch</p>' +
+            '<h1 class="flashcard-title">Flashcard Studio</h1>' +
+            '<p class="flashcard-subtitle">Build a study deck directly in the thread. This slice focuses on authoring only, so card order and edits stay explicit before study mode and Drive arrive.</p>' +
+            '</div>' +
+            '<div class="flashcard-actions">' +
+            '<button id="flashcard-complete-button" class="flashcard-button flashcard-button--primary" type="button">Return deck to chat</button>' +
+            '</div>' +
+            '</section>' +
+            '<section class="flashcard-status-strip">' +
+            '<div class="flashcard-meta">' +
+            '<span class="flashcard-pill">' + escapeHtml(snapshot.statusText) + '</span>' +
+            '<span>' + escapeHtml(snapshot.cardCount + ' cards') + '</span>' +
+            '<span>' + escapeHtml(snapshot.deckTitle) + '</span>' +
+            '</div>' +
+            '<div class="flashcard-meta">' +
+            '<span>' + escapeHtml(snapshot.summary) + '</span>' +
+            '</div>' +
+            '</section>' +
+            '<section class="flashcard-workspace">' +
+            '<div class="flashcard-panel">' +
+            '<h2>Deck order</h2>' +
+            '<p class="flashcard-panel-copy">Pick a card to edit it, or start a new one. Reordering stays visible and button-driven.</p>' +
+            (cards.length > 0
+              ? '<div class="flashcard-deck-list">' + cardsMarkup + '</div>'
+              : '<div class="flashcard-empty">No cards yet. Add a prompt and answer on the right, then create the first card.</div>') +
+            '</div>' +
+            '<div class="flashcard-panel">' +
+            '<h2>' + escapeHtml(selectedCard ? 'Edit selected card' : 'Create a new card') + '</h2>' +
+            '<p class="flashcard-panel-copy">' +
+            escapeHtml(selectedCard ? 'Update the selected prompt and answer, then save your edits.' : 'Write the front and back of a card, then add it to the deck.') +
+            '</p>' +
+            '<div class="flashcard-form">' +
+            '<div class="flashcard-field">' +
+            '<label for="deck-title-input">Deck title</label>' +
+            '<input id="deck-title-input" type="text" maxlength="80" value="' + escapeHtml(snapshot.deckTitle) + '" placeholder="Example: Biology review" />' +
+            '</div>' +
+            '<div class="flashcard-field">' +
+            '<label for="card-prompt-input">Prompt</label>' +
+            '<input id="card-prompt-input" type="text" maxlength="160" value="' + escapeHtml(state.editor.prompt) + '" placeholder="Example: What does the mitochondria do?" />' +
+            '</div>' +
+            '<div class="flashcard-field">' +
+            '<label for="card-answer-input">Answer</label>' +
+            '<textarea id="card-answer-input" maxlength="320" placeholder="Write the answer you want to study.">' + escapeHtml(state.editor.answer) + '</textarea>' +
+            '</div>' +
+            '<div class="flashcard-editor-actions">' +
+            '<button id="flashcard-add-button" class="flashcard-button flashcard-button--primary" type="button">Add card</button>' +
+            '<button id="flashcard-save-button" class="flashcard-button" type="button"' + (selectedIndex < 0 ? ' disabled' : '') + '>Save edits</button>' +
+            '<button id="flashcard-new-button" class="flashcard-button" type="button">New blank card</button>' +
+            '<button id="flashcard-delete-button" class="flashcard-button" type="button"' + (selectedIndex < 0 ? ' disabled' : '') + '>Delete card</button>' +
+            '</div>' +
+            '<div class="flashcard-order-actions">' +
+            '<button id="flashcard-move-up-button" class="flashcard-button" type="button"' + (selectedIndex <= 0 ? ' disabled' : '') + '>Move up</button>' +
+            '<button id="flashcard-move-down-button" class="flashcard-button" type="button"' + (selectedIndex < 0 || selectedIndex >= cards.length - 1 ? ' disabled' : '') + '>Move down</button>' +
+            '</div>' +
+            '<div class="' + validationClass + '">' + escapeHtml(state.validationMessage || snapshot.resumeHint) + '</div>' +
+            '</div>' +
+            '</div>' +
+            '</section>' +
+            '</div>' +
+            '</article>' +
+            '<p id="runtime-status-live" class="sr-only" aria-live="polite">' + escapeHtml(state.validationMessage || snapshot.statusText) + '</p>';
+
+          bindControls();
+        }
+
+        function sendInitialState() {
+          render();
+          sendBridgeEvent('app.state', {
+            idempotencyKey: 'flashcard-ready-' + currentEnvelope.bridgeSessionId,
+            snapshot: state.snapshot,
+          });
+        }
+
+        syncEditorFromSelection();
+        render();
+
+        window.addEventListener('message', (event) => {
+          const data = event.data;
+          if (!data || data.kind !== 'host.bootstrap' || bridgePort) {
+            return;
+          }
+          if (!event.ports || event.ports.length === 0 || !data.envelope) {
+            return;
+          }
+
+          currentEnvelope = data.envelope;
+          if (currentEnvelope.expectedOrigin !== '*' && event.origin !== currentEnvelope.expectedOrigin) {
+            return;
+          }
+
+          bridgePort = event.ports[0];
+          bridgePort.start && bridgePort.start();
+          bridgePort.onmessage = (portEvent) => {
+            const message = portEvent.data;
+            if (!message || message.kind !== 'host.syncContext') {
+              return;
+            }
+            if (
+              message.bridgeSessionId !== currentEnvelope.bridgeSessionId ||
+              message.appInstanceId !== currentEnvelope.appInstanceId ||
+              !message.snapshot ||
+              typeof message.snapshot !== 'object' ||
+              Array.isArray(message.snapshot)
+            ) {
+              return;
+            }
+
+            state.snapshot = clone(message.snapshot);
+            state.validationMessage = '';
+            syncEditorFromSelection();
+            render();
+          };
+
+          bridgePort.postMessage({
+            kind: 'app.ready',
+            bridgeSessionId: currentEnvelope.bridgeSessionId,
+            appInstanceId: currentEnvelope.appInstanceId,
+            bridgeToken: currentEnvelope.bridgeToken,
+            ackNonce: currentEnvelope.bootstrapNonce,
+            sequence: 1,
+          });
+
+          queueMicrotask(sendInitialState);
+        });
+
+        window.addEventListener('error', (event) => {
+          sendBridgeEvent('app.error', {
+            idempotencyKey: 'window-error-' + nextSequence,
+            error: event.message || 'flashcard studio runtime error',
+          });
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+          sendBridgeEvent('app.error', {
+            idempotencyKey: 'unhandled-rejection-' + nextSequence,
+            error: event.reason instanceof Error ? event.reason.message : String(event.reason),
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>`
+}
+
 export function createReviewedAppLaunchRuntimeMarkup(
   launch: ChatBridgeReviewedAppLaunch,
   persistedSnapshot?: unknown
@@ -1471,6 +2461,16 @@ export function createReviewedAppLaunchRuntimeMarkup(
         request: launch.request,
         snapshot: persistedSnapshot,
       })
+    )
+  }
+
+  if (launch.appId === FLASHCARD_STUDIO_APP_ID) {
+    return createFlashcardStudioRuntimeMarkup(
+      launch,
+      parseFlashcardStudioAppSnapshot(persistedSnapshot) ??
+        createInitialFlashcardStudioAppSnapshot({
+          request: launch.request,
+        })
     )
   }
 

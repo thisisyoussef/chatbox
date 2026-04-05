@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { MessageAppPart } from '../types/session'
 import { parseChessAppSnapshot } from './apps/chess'
 import { describeDrawingKitVisibleBoard, parseDrawingKitAppSnapshot } from './apps/drawing-kit'
+import { parseFlashcardStudioAppSnapshot } from './apps/flashcard-studio'
 
 export const CHATBRIDGE_APP_MEDIA_VALUES_KEY = 'chatbridgeAppMedia' as const
 
@@ -28,7 +29,7 @@ export const ChatBridgeAppMediaSchema = z.object({
 export type ChatBridgeAppMedia = z.infer<typeof ChatBridgeAppMediaSchema>
 
 export type ChatBridgeAppStateDigest = {
-  kind: 'chess' | 'drawing-kit'
+  kind: 'chess' | 'drawing-kit' | 'flashcard-studio'
   title: string
   lines: string[]
 }
@@ -98,6 +99,27 @@ function buildDrawingKitDigest(part: MessageAppPart): ChatBridgeAppStateDigest |
   }
 }
 
+function buildFlashcardStudioDigest(part: MessageAppPart): ChatBridgeAppStateDigest | null {
+  const snapshot = parseFlashcardStudioAppSnapshot(part.snapshot)
+  if (!snapshot) {
+    return null
+  }
+
+  const previewCards = snapshot.cards.slice(0, 3).map((card, index) => `${index + 1}. ${card.prompt}`)
+
+  return {
+    kind: 'flashcard-studio',
+    title: 'State digest',
+    lines: [
+      `Deck: ${snapshot.deckTitle}`,
+      `Status: ${snapshot.status}`,
+      `Cards: ${snapshot.cardCount}`,
+      `Latest action: ${snapshot.statusText}`,
+      ...(previewCards.length > 0 ? [`Preview: ${previewCards.join(' | ')}`] : ['Preview: no cards yet']),
+    ],
+  }
+}
+
 export function buildChatBridgeAppStateDigest(part: MessageAppPart): ChatBridgeAppStateDigest | null {
   if (part.appId === 'chess') {
     return buildChessDigest(part)
@@ -105,6 +127,10 @@ export function buildChatBridgeAppStateDigest(part: MessageAppPart): ChatBridgeA
 
   if (part.appId === 'drawing-kit') {
     return buildDrawingKitDigest(part)
+  }
+
+  if (part.appId === 'flashcard-studio') {
+    return buildFlashcardStudioDigest(part)
   }
 
   return null
