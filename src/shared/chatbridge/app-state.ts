@@ -106,6 +106,12 @@ function buildFlashcardStudioDigest(part: MessageAppPart): ChatBridgeAppStateDig
   }
 
   const previewCards = snapshot.cards.slice(0, 3).map((card, index) => `${index + 1}. ${card.prompt}`)
+  const reviewedCount = snapshot.studyCounts.easy + snapshot.studyCounts.medium + snapshot.studyCounts.hard
+  const weakPrompts = snapshot.studyMarks
+    .filter((mark) => mark.confidence === 'hard')
+    .map((mark) => snapshot.cards.find((card) => card.cardId === mark.cardId)?.prompt)
+    .filter((prompt): prompt is string => Boolean(prompt))
+    .slice(0, 3)
 
   return {
     kind: 'flashcard-studio',
@@ -113,8 +119,16 @@ function buildFlashcardStudioDigest(part: MessageAppPart): ChatBridgeAppStateDig
     lines: [
       `Deck: ${snapshot.deckTitle}`,
       `Status: ${snapshot.status}`,
+      `Mode: ${snapshot.mode}`,
       `Cards: ${snapshot.cardCount}`,
       `Latest action: ${snapshot.statusText}`,
+      ...(snapshot.mode === 'study'
+        ? [
+            `Study progress: ${reviewedCount} reviewed, ${Math.max(0, snapshot.cardCount - reviewedCount)} remaining`,
+            `Confidence: ${snapshot.studyCounts.easy} easy, ${snapshot.studyCounts.medium} medium, ${snapshot.studyCounts.hard} hard`,
+            ...(weakPrompts.length > 0 ? [`Needs review: ${weakPrompts.join(' | ')}`] : []),
+          ]
+        : []),
       ...(previewCards.length > 0 ? [`Preview: ${previewCards.join(' | ')}`] : ['Preview: no cards yet']),
     ],
   }

@@ -245,7 +245,7 @@ const REVIEWED_APP_CATALOG_DESCRIPTORS: ReviewedAppCatalogDescriptor[] = [
             name: CHATBRIDGE_FLASHCARD_STUDIO_TOOL_NAME,
             title: 'Open Flashcard Studio',
             description:
-              'Launch Flashcard Studio to create, edit, reorder, and delete flashcards for a study deck directly inside the thread.',
+              'Launch Flashcard Studio to create, edit, study, and review flashcards for a study deck directly inside the thread.',
             schemaVersion: 1,
             inputSchema: {
               type: 'object',

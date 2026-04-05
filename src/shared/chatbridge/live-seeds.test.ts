@@ -4,6 +4,7 @@ import {
   buildChatBridgeChessMidGameSessionFixture,
   buildChatBridgeDegradedCompletionRecoverySessionFixture,
   buildChatBridgeDrawingKitDoodleDareSessionFixture,
+  buildChatBridgeFlashcardStudioStudySessionFixture,
   buildChatBridgeWeatherDashboardSessionFixture,
   buildChatBridgePlatformRecoverySessionFixture,
   buildChatBridgeChessRuntimeSessionFixture,
@@ -145,6 +146,35 @@ describe('chatbridge live seed fixtures', () => {
     expect(fixture.chatBridgeAppRecords?.events).toHaveLength(2)
   })
 
+  it('builds a Flashcard Studio study fixture with a ready reviewed launch surface and seeded continuity', () => {
+    const fixture = buildChatBridgeFlashcardStudioStudySessionFixture()
+    const assistantMessage = fixture.messages.find((message) => message.id === 'msg-flashcard-assistant')
+    const appPart = assistantMessage?.contentParts.find((part) => part.type === 'app')
+
+    expect(appPart && appPart.type === 'app' ? appPart.appId : undefined).toBe('flashcard-studio')
+    expect(appPart && appPart.type === 'app' ? appPart.lifecycle : undefined).toBe('ready')
+    expect(appPart && appPart.type === 'app' ? appPart.snapshot : undefined).toMatchObject({
+      mode: 'study',
+      studyStatus: 'studying',
+      studyCounts: {
+        easy: 1,
+        medium: 0,
+        hard: 1,
+      },
+    })
+    expect(appPart && appPart.type === 'app' ? appPart.values : undefined).toMatchObject({
+      chatbridgeReviewedAppLaunch: {
+        appId: 'flashcard-studio',
+        toolName: 'flashcard_studio_open',
+      },
+    })
+    expect(fixture.chatBridgeAppRecords?.instances[0]).toMatchObject({
+      appId: 'flashcard-studio',
+      status: 'ready',
+    })
+    expect(fixture.chatBridgeAppRecords?.events).toHaveLength(2)
+  })
+
   it('builds a Weather Dashboard fixture with a ready reviewed launch surface and restartable continuity', () => {
     const fixture = buildChatBridgeWeatherDashboardSessionFixture()
     const assistantMessage = fixture.messages.find((message) => message.id === 'msg-weather-assistant')
@@ -175,12 +205,17 @@ describe('chatbridge live seed fixtures', () => {
       'platform-recovery',
       'chess-mid-game-board-context',
       'drawing-kit-doodle-dare',
+      'flashcard-studio-study-mode',
       'weather-dashboard',
       'chess-runtime',
       'runtime-and-route-receipt',
       'history-and-preview',
     ])
     expect(fixtures.find((fixture) => fixture.id === 'drawing-kit-doodle-dare')).toMatchObject({
+      fixtureRole: 'active-flagship',
+      smokeSupport: 'supported',
+    })
+    expect(fixtures.find((fixture) => fixture.id === 'flashcard-studio-study-mode')).toMatchObject({
       fixtureRole: 'active-flagship',
       smokeSupport: 'supported',
     })

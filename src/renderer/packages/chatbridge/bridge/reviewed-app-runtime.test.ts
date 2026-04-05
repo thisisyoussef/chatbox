@@ -69,7 +69,7 @@ describe('createReviewedAppLaunchRuntimeMarkup', () => {
     expect(markup).not.toContain('Round bank')
   })
 
-  it('builds a Flashcard Studio runtime with deck-authoring controls and completion hooks', () => {
+  it('builds a Flashcard Studio runtime with deck authoring, study controls, and completion hooks', () => {
     const markup = createReviewedAppLaunchRuntimeMarkup(
       {
         schemaVersion: 1,
@@ -102,6 +102,12 @@ describe('createReviewedAppLaunchRuntimeMarkup', () => {
     expect(markup).toContain('Build a study deck directly in the thread')
     expect(markup).toContain('Add card')
     expect(markup).toContain('Save edits')
+    expect(markup).toContain('Start study mode')
+    expect(markup).toContain('Reveal answer')
+    expect(markup).toContain('Easy')
+    expect(markup).toContain('Medium')
+    expect(markup).toContain('Hard')
+    expect(markup).toContain('Keep editing')
     expect(markup).toContain('Move up')
     expect(markup).toContain('Return deck to chat')
     expect(markup).toContain('app.complete')

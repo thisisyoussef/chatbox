@@ -346,4 +346,64 @@ describe('selectChatBridgeAppContexts', () => {
     expect(prompt).toContain('Deck: Science review')
     expect(prompt).toContain('Preview: 1. What does the mitochondria do? | 2. What is photosynthesis?')
   })
+
+  it('surfaces bounded weak-area continuity after flashcard study mode completes', () => {
+    const snapshot = createFlashcardStudioAppSnapshot({
+      deckTitle: 'Science review',
+      status: 'complete',
+      mode: 'study',
+      studyStatus: 'complete',
+      cards: [
+        {
+          cardId: 'card-1',
+          prompt: 'What does the mitochondria do?',
+          answer: 'It helps the cell produce energy.',
+        },
+        {
+          cardId: 'card-2',
+          prompt: 'What is photosynthesis?',
+          answer: 'Plants use sunlight to make food.',
+        },
+      ],
+      studyPosition: 2,
+      studyMarks: [
+        { cardId: 'card-1', confidence: 'easy' },
+        { cardId: 'card-2', confidence: 'hard' },
+      ],
+      lastAction: 'completed-study-round',
+      lastUpdatedAt: 7_000,
+    })
+
+    const messages: Message[] = [
+      {
+        id: 'flashcard-complete',
+        role: 'assistant',
+        contentParts: [
+          {
+            type: 'app',
+            appId: 'flashcard-studio',
+            appName: 'Flashcard Studio',
+            appInstanceId: 'flashcard-instance-2',
+            lifecycle: 'complete',
+            summary: 'Raw flashcard study summary should not be the continuity source.',
+            snapshot,
+          },
+        ],
+      },
+    ]
+
+    const contexts = selectChatBridgeAppContexts(messages)
+
+    expect(contexts).toHaveLength(1)
+    expect(contexts[0]?.summaryForModel).toContain('study results')
+    expect(contexts[0]?.summaryForModel).toContain('1 easy, 0 medium, 1 hard')
+    expect(contexts[0]?.summaryForModel).toContain('Needs review: What is photosynthesis?')
+    expect(contexts[0]?.summaryForModel).not.toContain('Plants use sunlight to make food.')
+
+    const prompt = buildChatBridgeSelectedAppContextPrompt(messages)
+
+    expect(prompt).toContain('Lifecycle: recently completed')
+    expect(prompt).toContain('Mode: study')
+    expect(prompt).toContain('Needs review: What is photosynthesis?')
+  })
 })
