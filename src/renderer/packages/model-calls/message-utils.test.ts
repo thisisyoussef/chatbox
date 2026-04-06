@@ -318,4 +318,112 @@ describe('convertToModelMessages chatbridge normalization', () => {
       },
     ])
   })
+
+  it('base64-encodes non-base64 app screenshots before adding them to assistant model context', async () => {
+    const svgMarkup = '<svg xmlns="http://www.w3.org/2000/svg"><text x="4" y="16">moon pizza</text></svg>'
+    vi.mocked(createModelDependencies).mockResolvedValue({
+      storage: {
+        getImage: vi.fn(async () => `data:image/svg+xml;utf8,${encodeURIComponent(svgMarkup)}`),
+      },
+    } as never)
+
+    const snapshot = createDrawingKitAppSnapshot({
+      roundLabel: 'Dare 12',
+      roundPrompt: 'Draw a moon pizza.',
+      selectedTool: 'brush',
+      status: 'checkpointed',
+      caption: 'Moon pizza svg',
+      strokeCount: 3,
+      stickerCount: 1,
+    })
+
+    const messages: Message[] = [
+      {
+        id: 'msg-drawing-svg',
+        role: 'assistant',
+        contentParts: [
+          {
+            type: 'app',
+            appId: 'drawing-kit',
+            appName: 'Drawing Kit',
+            appInstanceId: 'drawing-instance-svg',
+            lifecycle: 'active',
+            summaryForModel: snapshot.summary,
+            snapshot,
+            values: {
+              chatbridgeAppMedia: {
+                screenshots: [
+                  {
+                    kind: 'app-screenshot',
+                    appId: 'drawing-kit',
+                    appInstanceId: 'drawing-instance-svg',
+                    storageKey: 'storage://drawing-shot-svg',
+                    capturedAt: 2_500,
+                    summary: 'An SVG moon pizza sketch.',
+                    source: 'runtime-captured',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    ]
+
+    const result = await convertToModelMessages(messages)
+
+    expect(result).toEqual([
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'text',
+            text: expect.stringContaining('Drawing Kit checkpoint banked.'),
+          },
+          {
+            type: 'file',
+            data: Buffer.from(svgMarkup).toString('base64'),
+            mediaType: 'image/svg+xml',
+          },
+        ],
+      },
+    ])
+  })
+
+  it('base64-encodes non-base64 user vision images before passing them to the model', async () => {
+    const svgMarkup = '<svg xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6"/></svg>'
+    vi.mocked(createModelDependencies).mockResolvedValue({
+      storage: {
+        getImage: vi.fn(async () => `data:image/svg+xml;utf8,${encodeURIComponent(svgMarkup)}`),
+      },
+    } as never)
+
+    const messages: Message[] = [
+      {
+        id: 'msg-user-vision-svg',
+        role: 'user',
+        contentParts: [
+          {
+            type: 'image',
+            storageKey: 'storage://drawing-shot-user-svg',
+          },
+        ],
+      },
+    ]
+
+    const result = await convertToModelMessages(messages, { modelSupportVision: true })
+
+    expect(result).toEqual([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            image: Buffer.from(svgMarkup).toString('base64'),
+            mediaType: 'image/svg+xml',
+          },
+        ],
+      },
+    ])
+  })
 })
