@@ -9,6 +9,7 @@ import type { LangSmithRunHandle } from '@shared/utils/langsmith_adapter'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { langsmith } from '@/adapters/langsmith'
 import { createBridgeHostController } from '@/packages/chatbridge/bridge/host-controller'
+import { getApprovedPartnerRuntimeMarkup } from '@/packages/chatbridge/partner-submissions'
 import { createReviewedAppLaunchRuntimeMarkup } from '@/packages/chatbridge/bridge/reviewed-app-runtime'
 import {
   persistReviewedAppLaunchBootstrap,
@@ -50,9 +51,10 @@ export function ReviewedAppRuntimeFrame({
   const snapshot = readSnapshotRecord(part.snapshot)
 
   if (!runtimeMarkupRef.current || runtimeMarkupRef.current.appInstanceId !== part.appInstanceId) {
+    const uploadedRuntimeMarkup = getApprovedPartnerRuntimeMarkup(part.appId)
     runtimeMarkupRef.current = {
       appInstanceId: part.appInstanceId,
-      markup: createReviewedAppLaunchRuntimeMarkup(launch, part.snapshot),
+      markup: uploadedRuntimeMarkup ?? createReviewedAppLaunchRuntimeMarkup(launch, part.snapshot),
     }
   }
 

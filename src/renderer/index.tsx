@@ -66,6 +66,15 @@ async function initializeApp() {
     Sentry.captureException(e as Error)
   }
 
+  try {
+    const { hydrateChatBridgePartnerSubmissions } = await import('./packages/chatbridge/partner-submissions')
+    await hydrateChatBridgePartnerSubmissions()
+    log.info('chatbridge partner submissions hydrated')
+  } catch (e) {
+    log.error('chatbridge partner submissions hydrate error', e)
+    Sentry.captureException(e as Error)
+  }
+
   // 最后执行 storage 清理，清理不 block 进入UI
   import('./setup/storage_clear')
 

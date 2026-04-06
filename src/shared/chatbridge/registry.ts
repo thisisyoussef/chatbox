@@ -156,7 +156,10 @@ export function defineReviewedApp(entryInput: unknown, options?: ReviewedAppRegi
   return entry
 }
 
-export function defineReviewedApps(entriesInput: unknown[], options?: ReviewedAppRegistrySupport): ReviewedAppCatalogEntry[] {
+export function defineReviewedApps(
+  entriesInput: unknown[],
+  options?: ReviewedAppRegistrySupport
+): ReviewedAppCatalogEntry[] {
   const normalizedEntries = entriesInput.map((entryInput) =>
     assertReviewedAppCatalogEntrySupported(normalizeReviewedAppCatalogEntry(entryInput), options)
   )
@@ -166,6 +169,23 @@ export function defineReviewedApps(entriesInput: unknown[], options?: ReviewedAp
       console.warn(`Reviewed ChatBridge app "${entry.manifest.appId}" is already registered. Overwriting.`)
     }
   }
+
+  for (const entry of normalizedEntries) {
+    reviewedAppRegistry.set(entry.manifest.appId, entry)
+  }
+
+  return normalizedEntries
+}
+
+export function setReviewedAppCatalog(
+  entriesInput: unknown[],
+  options?: ReviewedAppRegistrySupport
+): ReviewedAppCatalogEntry[] {
+  const normalizedEntries = entriesInput.map((entryInput) =>
+    assertReviewedAppCatalogEntrySupported(normalizeReviewedAppCatalogEntry(entryInput), options)
+  )
+
+  reviewedAppRegistry.clear()
 
   for (const entry of normalizedEntries) {
     reviewedAppRegistry.set(entry.manifest.appId, entry)

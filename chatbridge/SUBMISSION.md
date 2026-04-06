@@ -31,7 +31,8 @@ current `main` branch.
   [EVALS_AND_OBSERVABILITY.md](./EVALS_AND_OBSERVABILITY.md)
 - Reviewed-partner contract and local harness:
   [PARTNER_SDK.md](./PARTNER_SDK.md),
-  [examples/reviewed-partner-manifest.example.json](./examples/reviewed-partner-manifest.example.json)
+  [examples/reviewed-partner-manifest.example.json](./examples/reviewed-partner-manifest.example.json),
+  [examples/reviewed-partner-runtime.example.html](./examples/reviewed-partner-runtime.example.html)
 - AI cost packet and projection assumptions:
   [AI_COST_ANALYSIS.md](./AI_COST_ANALYSIS.md),
   [examples/ai-cost-analysis.reference.json](./examples/ai-cost-analysis.reference.json)
@@ -156,6 +157,22 @@ Flashcard Studio is the authenticated third-party proof for the submission.
   Google Drive auth remains host-owned, save or reopen metadata stays bounded,
   and denied or expired auth keeps the local deck visible while the reconnect
   rail remains inline.
+
+## Partner Submission Portal
+
+The submission now includes a real host-owned partner intake flow instead of
+docs-only onboarding.
+
+- Product surface:
+  `Settings -> ChatBridge Partners`
+- Repo proof:
+  [../src/renderer/components/settings/chatbridge/PartnerPortal.tsx](../src/renderer/components/settings/chatbridge/PartnerPortal.tsx),
+  [../src/renderer/packages/chatbridge/partner-submissions.ts](../src/renderer/packages/chatbridge/partner-submissions.ts),
+  [../test/integration/chatbridge/scenarios/partner-submission-intake.test.ts](../test/integration/chatbridge/scenarios/partner-submission-intake.test.ts)
+- What to verify:
+  a developer can paste a manifest, optionally upload a single-file HTML
+  runtime, submit it into the queue, and approve it so the app is ingested into
+  the reviewed catalog without leaving the product shell.
 
 ## Notes
 

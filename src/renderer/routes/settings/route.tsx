@@ -11,6 +11,7 @@ import {
   IconInfoCircle,
   IconKeyboard,
   IconMessages,
+  IconPuzzle,
   IconSparkles,
   IconWorldWww,
 } from '@tabler/icons-react'
@@ -69,6 +70,11 @@ const ITEMS = [
     key: 'document-parser',
     label: 'Document Parser',
     icon: <IconFileText className="w-full h-full" />,
+  },
+  {
+    key: 'chatbridge-partners',
+    label: 'ChatBridge Partners',
+    icon: <IconPuzzle className="w-full h-full" />,
   },
   {
     key: 'chat',
