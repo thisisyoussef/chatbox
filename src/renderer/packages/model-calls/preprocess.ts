@@ -8,6 +8,7 @@ import { createModelDependencies } from '@/adapters'
 import { settingsStore } from '@/stores/settingsStore'
 import type { LangSmithTraceContext } from '../../../shared/utils/langsmith_adapter'
 import { ModelProviderEnum, type Message } from '../../../shared/types'
+import { normalizeImageDataForModel } from './image-input-utils'
 
 const OCR_PROMPT =
   'OCR the following image into Markdown. Tables should be formatted as HTML. Do not sorround your output with triple backticks.'
@@ -66,6 +67,7 @@ async function runImageToTextPrompt(
   instruction: string,
   traceContext?: LangSmithTraceContext
 ) {
+  const normalizedImage = await normalizeImageDataForModel(imageData)
   const msg: ModelMessage = {
     role: 'user',
     content: [
@@ -75,7 +77,8 @@ async function runImageToTextPrompt(
       },
       {
         type: 'image' as const,
-        image: imageData,
+        image: normalizedImage.data,
+        mediaType: normalizedImage.mediaType,
         providerOptions: {
           openai: {
             imageDetail: 'high',

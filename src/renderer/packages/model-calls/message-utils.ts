@@ -11,42 +11,7 @@ import dayjs from 'dayjs'
 import { compact } from 'lodash'
 import { createModelDependencies } from '@/adapters'
 import { cloneMessage, getMessageText } from '@/utils/message'
-
-function encodeUtf8ToBase64(value: string) {
-  const bytes = new TextEncoder().encode(value)
-  let binary = ''
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-  return btoa(binary)
-}
-
-function normalizeStoredImageDataForModel(imageData: string) {
-  const mediaType = imageData.match(/^data:([^;,]+)/)?.[1] || 'image/png'
-  if (!imageData.startsWith('data:')) {
-    return { data: imageData, mediaType }
-  }
-
-  const commaIndex = imageData.indexOf(',')
-  if (commaIndex < 0) {
-    return { data: imageData, mediaType }
-  }
-
-  const header = imageData.slice(0, commaIndex)
-  const payload = imageData.slice(commaIndex + 1)
-  if (/;base64(?:;|$)/i.test(header)) {
-    return { data: payload, mediaType }
-  }
-
-  let decodedPayload = payload
-  try {
-    decodedPayload = decodeURIComponent(payload)
-  } catch {
-    // Keep the raw payload when it is not percent-encoded.
-  }
-
-  return { data: encodeUtf8ToBase64(decodedPayload), mediaType }
-}
+import { normalizeImageDataForModel } from './image-input-utils'
 
 async function convertContentParts<T extends TextPart | ImagePart | FilePart>(
   contentParts: MessageContentParts,
@@ -69,7 +34,7 @@ async function convertContentParts<T extends TextPart | ImagePart | FilePart>(
               console.warn(`Image not found for storage key: ${c.storageKey}`)
               return null
             }
-            const { data, mediaType } = normalizeStoredImageDataForModel(imageData)
+            const { data, mediaType } = await normalizeImageDataForModel(imageData)
 
             if (imageType === 'image') {
               return {
@@ -131,7 +96,7 @@ async function convertAssistantContentParts(
           console.warn(`Image not found for storage key: ${part.storageKey}`)
           continue
         }
-        const { data, mediaType } = normalizeStoredImageDataForModel(imageData)
+        const { data, mediaType } = await normalizeImageDataForModel(imageData)
 
         results.push({
           type: 'file',
@@ -165,7 +130,7 @@ async function convertAssistantContentParts(
             continue
           }
 
-          const { data, mediaType } = normalizeStoredImageDataForModel(imageData)
+          const { data, mediaType } = await normalizeImageDataForModel(imageData)
           results.push({
             type: 'file',
             data,

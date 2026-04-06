@@ -5,6 +5,11 @@ import { normalizeChatBridgeCompletionSummaryForModel } from '@shared/chatbridge
 import { createModelDependencies } from '@/adapters'
 import { convertToModelMessages } from './message-utils'
 
+vi.mock('@/packages/pic_utils', () => ({
+  svgCodeToBase64: vi.fn((svgCode: string) => `data:image/svg+xml;base64,${Buffer.from(svgCode).toString('base64')}`),
+  svgToPngBase64: vi.fn(async () => 'data:image/png;base64,cmFzdGVyaXplZC1zdmctcG5n'),
+}))
+
 vi.mock('@/adapters', () => ({
   createModelDependencies: vi.fn(async () => ({
     storage: {
@@ -382,8 +387,8 @@ describe('convertToModelMessages chatbridge normalization', () => {
           },
           {
             type: 'file',
-            data: Buffer.from(svgMarkup).toString('base64'),
-            mediaType: 'image/svg+xml',
+            data: 'cmFzdGVyaXplZC1zdmctcG5n',
+            mediaType: 'image/png',
           },
         ],
       },
@@ -419,8 +424,8 @@ describe('convertToModelMessages chatbridge normalization', () => {
         content: [
           {
             type: 'image',
-            image: Buffer.from(svgMarkup).toString('base64'),
-            mediaType: 'image/svg+xml',
+            image: 'cmFzdGVyaXplZC1zdmctcG5n',
+            mediaType: 'image/png',
           },
         ],
       },
