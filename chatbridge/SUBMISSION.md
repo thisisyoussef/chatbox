@@ -30,7 +30,8 @@ current `main` branch.
   [INTEGRATION_HARNESS.md](./INTEGRATION_HARNESS.md),
   [EVALS_AND_OBSERVABILITY.md](./EVALS_AND_OBSERVABILITY.md)
 - Reviewed-partner contract and local harness:
-  [PARTNER_SDK.md](./PARTNER_SDK.md)
+  [PARTNER_SDK.md](./PARTNER_SDK.md),
+  [examples/reviewed-partner-manifest.example.json](./examples/reviewed-partner-manifest.example.json)
 
 ## Recommended Reviewer Flow
 

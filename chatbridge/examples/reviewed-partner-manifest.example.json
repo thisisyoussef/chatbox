@@ -1,0 +1,92 @@
+{
+  "manifest": {
+    "appId": "checkpoint-coach",
+    "name": "Checkpoint Coach",
+    "version": "0.1.0",
+    "protocolVersion": 1,
+    "origin": "https://apps.example.com",
+    "uiEntry": "https://apps.example.com/checkpoint-coach",
+    "authMode": "host-session",
+    "permissions": [
+      {
+        "id": "session.context.read",
+        "resource": "chat.session",
+        "access": "read",
+        "required": true,
+        "purpose": "Resume the current classroom checkpoint from host-owned conversation context."
+      }
+    ],
+    "toolSchemas": [
+      {
+        "name": "checkpoint_coach_open",
+        "title": "Open Checkpoint Coach",
+        "description": "Launch the reviewed Checkpoint Coach app for a structured class checkpoint.",
+        "schemaVersion": 1,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "string",
+              "description": "Natural-language request that triggered the launch."
+            },
+            "checkpointId": {
+              "type": "string",
+              "description": "Optional checkpoint identifier to reopen."
+            }
+          },
+          "required": [
+            "request"
+          ]
+        }
+      }
+    ],
+    "supportedEvents": [
+      "host.init",
+      "app.ready",
+      "app.state",
+      "app.complete",
+      "app.error"
+    ],
+    "completionModes": [
+      "summary",
+      "state"
+    ],
+    "timeouts": {
+      "launchMs": 15000,
+      "idleMs": 120000,
+      "completionMs": 10000
+    },
+    "safetyMetadata": {
+      "reviewed": true,
+      "sandbox": "hosted-iframe",
+      "handlesStudentData": true,
+      "requiresTeacherApproval": true
+    },
+    "launchSurfaces": {
+      "desktop-electron": {
+        "sandbox": "hosted-iframe"
+      },
+      "web-browser": {
+        "sandbox": "hosted-iframe"
+      }
+    },
+    "tenantAvailability": {
+      "default": "disabled",
+      "allow": [
+        "tenant:k12-demo"
+      ],
+      "deny": []
+    },
+    "healthcheck": {
+      "url": "https://apps.example.com/healthz",
+      "intervalMs": 30000,
+      "timeoutMs": 2000
+    }
+  },
+  "approval": {
+    "status": "approved",
+    "reviewedAt": 1711930000000,
+    "reviewedBy": "platform-review",
+    "catalogVersion": 1
+  }
+}

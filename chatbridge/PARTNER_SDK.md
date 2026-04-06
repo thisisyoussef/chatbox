@@ -7,6 +7,8 @@ review.
 
 ## What This Covers
 
+- a concrete `register -> invoke -> render -> complete` quickstart
+- a checked-in reviewed manifest example you can copy
 - reviewed manifest validation against the current host support matrix
 - launch-scoped bridge expectations for embedded partner runtimes
 - host-managed auth expectations for reviewed apps
@@ -18,6 +20,50 @@ Authoritative repo surfaces:
 - `src/shared/chatbridge/partner-validator.ts`
 - `test/integration/chatbridge/mocks/partner-harness.ts`
 - `test/integration/chatbridge/scenarios/partner-sdk-harness.test.ts`
+- `chatbridge/examples/reviewed-partner-manifest.example.json`
+
+## Quickstart
+
+This is the shortest safe path for a new reviewed partner app developer:
+
+1. Copy the checked-in manifest example from
+   `chatbridge/examples/reviewed-partner-manifest.example.json`.
+2. Update the app metadata, URLs, permissions, and tool schema for your app.
+3. Run `validateChatBridgePartnerManifest` locally before asking for platform
+   review.
+4. Use `createChatBridgePartnerHarness` to exercise the launch-scoped bridge.
+5. Make your runtime acknowledge `host.bootstrap` with `app.ready`.
+6. Confirm the host can send `host.render`, then emit `app.state` and
+   `app.complete`.
+7. If your app needs OAuth or API-key access, add `app.requestAuth` and keep
+   credentials host-owned.
+
+If you want one working reference before adapting anything, start here:
+
+- manifest fixture:
+  `test/integration/chatbridge/fixtures/reviewed-app-manifests.ts`
+- harness scenario:
+  `test/integration/chatbridge/scenarios/partner-sdk-harness.test.ts`
+
+## Minimal Reviewed Manifest Example
+
+The checked-in example manifest lives at:
+
+- `chatbridge/examples/reviewed-partner-manifest.example.json`
+
+It is intentionally minimal and uses `host-session` auth so the first harness
+pass stays focused on the reviewed lifecycle rather than OAuth complexity.
+
+Use it as the baseline for:
+
+- `appId`, `name`, `version`, `origin`, and `uiEntry`
+- one reviewed tool schema with an object-root input schema
+- required lifecycle events
+- launch surfaces and tenant availability
+- reviewed approval metadata
+
+If your app later needs host-managed OAuth or API-key access, keep the same
+shape and add the auth-mode delta documented below.
 
 ## Validator Entry Point
 
@@ -45,6 +91,14 @@ The report gives you:
 Validation is fail-closed. Unsupported protocol versions, unsupported auth
 modes, malformed schemas, or missing mandatory lifecycle events are errors.
 
+For the checked-in example manifest, a successful validation report should tell
+you:
+
+- the manifest is valid
+- the supported contract matches the current host support matrix
+- the guidance block lists the lifecycle and auth boundary rules you must
+  follow in the runtime
+
 ## Required Reviewed-App Contract
 
 Your manifest must stay aligned with the current reviewed-app contract in
@@ -68,6 +122,119 @@ The host currently supports:
 - auth modes `none`, `host-session`, `oauth`, `api-key`
 - bridge lifecycle events from the reviewed manifest support matrix
 - completion modes `message`, `summary`, `state`, `handoff`
+
+## Register -> Invoke -> Render -> Complete
+
+This is the practical flow a new partner should implement and debug locally.
+
+### 1. Register
+
+Start from the example manifest and validate it:
+
+```ts
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { validateChatBridgePartnerManifest } from '@shared/chatbridge'
+
+const exampleEntry = JSON.parse(
+  readFileSync(resolve(process.cwd(), 'chatbridge/examples/reviewed-partner-manifest.example.json'), 'utf8')
+)
+
+const report = validateChatBridgePartnerManifest(exampleEntry)
+
+if (!report.valid) {
+  console.error(report.issues)
+  throw new Error('Manifest did not pass the reviewed-partner contract.')
+}
+```
+
+### 2. Invoke
+
+Create the local harness so the host bootstrap and runtime lifecycle stay
+deterministic while you build:
+
+```ts
+import { createChatBridgePartnerHarness } from '../test/integration/chatbridge/mocks/partner-harness'
+
+const harness = createChatBridgePartnerHarness({
+  appId: exampleEntry.manifest.appId,
+  appName: exampleEntry.manifest.name,
+  appVersion: exampleEntry.manifest.version,
+  appInstanceId: 'partner-instance-1',
+  expectedOrigin: exampleEntry.manifest.origin,
+  capabilities: ['render-html-preview'],
+  createIds: ['bridge-session-1', 'bridge-token-1', 'bridge-nonce-1', 'render-1'],
+})
+```
+
+### 3. Render
+
+Your runtime must acknowledge `host.bootstrap` with `app.ready` before the host
+may trust later traffic. After that, the host can send `host.render` updates
+and your runtime can emit `app.state` snapshots.
+
+```ts
+const readyPromise = harness.waitForReady()
+
+harness.sendAppEvent({
+  kind: 'app.ready',
+  bridgeSessionId: 'bridge-session-1',
+  appInstanceId: 'partner-instance-1',
+  bridgeToken: 'bridge-token-1',
+  ackNonce: 'bridge-nonce-1',
+  sequence: 1,
+})
+
+await readyPromise
+
+harness.renderHtml('<html><body><h1>Checkpoint Coach</h1></body></html>')
+
+harness.sendAppEvent({
+  kind: 'app.state',
+  bridgeSessionId: 'bridge-session-1',
+  appInstanceId: 'partner-instance-1',
+  bridgeToken: 'bridge-token-1',
+  sequence: 2,
+  idempotencyKey: 'state-2',
+  snapshot: {
+    route: '/checkpoints/checkpoint-42',
+    checkpointId: 'checkpoint-42',
+  },
+})
+```
+
+### 4. Complete
+
+Completion is explicit. Emit `app.complete` with structured outcome data and an
+optional suggested summary. The host validates the payload and decides what
+later chat turns may see.
+
+```ts
+import { CHATBRIDGE_COMPLETION_SCHEMA_VERSION } from '@shared/chatbridge'
+
+harness.sendAppEvent({
+  kind: 'app.complete',
+  bridgeSessionId: 'bridge-session-1',
+  appInstanceId: 'partner-instance-1',
+  bridgeToken: 'bridge-token-1',
+  sequence: 3,
+  idempotencyKey: 'complete-3',
+  completion: {
+    schemaVersion: CHATBRIDGE_COMPLETION_SCHEMA_VERSION,
+    status: 'success',
+    outcomeData: {
+      checkpointId: 'checkpoint-42',
+    },
+    suggestedSummary: {
+      text: 'Checkpoint Coach finished the current checkpoint and returned the saved state to chat.',
+    },
+  },
+})
+```
+
+The working end-to-end reference for this path is:
+
+- `test/integration/chatbridge/scenarios/partner-sdk-harness.test.ts`
 
 ## Launch-Scoped Bridge Rules
 
@@ -118,6 +285,20 @@ Relevant contract surfaces:
 - `src/shared/chatbridge/auth.ts`
 - `src/shared/chatbridge/resource-proxy.ts`
 
+## OAuth Or API-Key Delta
+
+The checked-in manifest example is `host-session` on purpose. If your app needs
+`oauth` or `api-key` instead:
+
+1. switch `authMode`
+2. add the required app-specific permissions
+3. include `app.requestAuth` in `supportedEvents`
+4. request access through the host-managed auth flow
+5. keep raw tokens and long-lived credentials out of the partner runtime
+
+The validator will fail closed if an `oauth` or `api-key` manifest omits
+`app.requestAuth`.
+
 ## Completion and Memory Expectations
 
 Completion is mandatory and explicit.
@@ -159,3 +340,16 @@ Representative usage lives in:
 Keep new partner fixtures deterministic and secretless. The local harness is
 for contract compatibility and failure debugging, not for bypassing reviewed
 host controls.
+
+## Debugging Checklist
+
+Before asking for platform review, confirm all of these locally:
+
+- your manifest validates with `validateChatBridgePartnerManifest`
+- your runtime acknowledges `host.bootstrap` with `app.ready`
+- the harness receives at least one `host.render` message
+- your runtime emits monotonic sequence numbers
+- your runtime emits unique idempotency keys for `app.state` and
+  `app.complete`
+- your completion payload uses `schemaVersion: 1`
+- the host, not the runtime, owns `summaryForModel`
