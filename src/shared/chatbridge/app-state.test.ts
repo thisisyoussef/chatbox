@@ -151,7 +151,7 @@ describe('chatbridge app state helpers', () => {
     })
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Deck: Science review')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Cards: 2')
-    expect(formatChatBridgeAppStateDigest(digest)).toContain('Drive: Drive not connected')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Drive: Google Sheets not connected')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('What does the mitochondria do?')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('What is photosynthesis?')
     expect(formatChatBridgeAppStateDigest(digest)).not.toContain('Plants use sunlight to make food.')
@@ -225,12 +225,12 @@ describe('chatbridge app state helpers', () => {
             recentDecks: [
               {
                 deckId: 'drive-deck-science-review',
-                deckName: 'Science review.chatbridge-flashcards.json',
+                deckName: 'Science review flashcards',
                 modifiedAt: 1_717_000_100_000,
               },
             ],
             lastSavedDeckId: 'drive-deck-science-review',
-            lastSavedDeckName: 'Science review.chatbridge-flashcards.json',
+            lastSavedDeckName: 'Science review flashcards',
             lastSavedAt: 1_717_000_100_000,
           },
           lastAction: 'updated-card',
@@ -239,8 +239,8 @@ describe('chatbridge app state helpers', () => {
       })
     )
 
-    expect(formatChatBridgeAppStateDigest(digest)).toContain('Drive: Reconnect Drive to resume')
-    expect(formatChatBridgeAppStateDigest(digest)).toContain('Saved deck: Science review.chatbridge-flashcards.json')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Drive: Reconnect Google Sheets to resume')
+    expect(formatChatBridgeAppStateDigest(digest)).toContain('Saved deck: Science review flashcards')
     expect(formatChatBridgeAppStateDigest(digest)).toContain('Recent decks: 1')
   })
 

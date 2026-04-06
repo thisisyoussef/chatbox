@@ -2,21 +2,28 @@ import { z } from 'zod'
 import {
   ChatBridgeAppAuthGrantSchema,
   FLASHCARD_STUDIO_APP_ID,
-  FlashcardStudioAppSnapshotSchema,
+  FlashcardStudioAuthoringActionSchema,
+  FlashcardStudioDeckStatusSchema,
   FlashcardStudioDriveRecentDeckSchema,
+  FlashcardStudioModeSchema,
+  FlashcardStudioStudyConfidenceSchema,
+  FlashcardStudioStudyStatusSchema,
+  createFlashcardStudioAppSnapshot,
   updateFlashcardStudioAppSnapshot,
   type ChatBridgeAppAuthGrant,
   type FlashcardStudioAppSnapshot,
-  type FlashcardStudioDriveStatus,
   type FlashcardStudioDriveRecentDeck,
+  type FlashcardStudioDriveStatus,
 } from '@shared/chatbridge'
 import platform from '@/platform'
 import { GOOGLE_CLIENT_ID } from '@/variables'
 
 const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
-const FLASHCARD_STUDIO_DRIVE_STORE_SCHEMA_VERSION = 1 as const
-const FLASHCARD_STUDIO_DRIVE_FILE_SCHEMA_VERSION = 1 as const
+const FLASHCARD_STUDIO_DRIVE_STORE_SCHEMA_VERSION = 2 as const
+const FLASHCARD_STUDIO_SHEET_LAYOUT_VERSION = 1 as const
 const MAX_RECENT_DECKS = 5
+const GOOGLE_SHEETS_CARDS_TAB = 'Cards'
+const GOOGLE_SHEETS_STATE_TAB = 'Session State'
 
 type GoogleAccountsTokenResponse = {
   access_token?: string
@@ -52,6 +59,7 @@ type GoogleIdentityWindow = Window & {
 const FlashcardStudioDriveLocalStateSchema = z
   .object({
     schemaVersion: z.literal(FLASHCARD_STUDIO_DRIVE_STORE_SCHEMA_VERSION),
+    storageKind: z.literal('google-sheet').default('google-sheet'),
     userId: z.string().trim().min(1),
     appId: z.literal(FLASHCARD_STUDIO_APP_ID),
     grant: ChatBridgeAppAuthGrantSchema.nullable().default(null),
@@ -65,22 +73,24 @@ const FlashcardStudioDriveLocalStateSchema = z
   .strict()
 type FlashcardStudioDriveLocalState = z.infer<typeof FlashcardStudioDriveLocalStateSchema>
 
-const FlashcardStudioDriveFileEnvelopeSchema = z
-  .object({
-    schemaVersion: z.literal(FLASHCARD_STUDIO_DRIVE_FILE_SCHEMA_VERSION),
-    appId: z.literal(FLASHCARD_STUDIO_APP_ID),
-    savedAt: z.number().int().nonnegative(),
-    deckId: z.string().trim().min(1),
-    deckName: z.string().trim().min(1),
-    snapshot: FlashcardStudioAppSnapshotSchema,
-  })
-  .strict()
-type FlashcardStudioDriveFileEnvelope = z.infer<typeof FlashcardStudioDriveFileEnvelopeSchema>
-
 type GoogleDriveFileMetadata = {
   id: string
   name: string
-  modifiedTime: string
+  modifiedTime?: string
+}
+
+type GoogleSheetsSpreadsheet = {
+  spreadsheetId: string
+  properties?: {
+    title?: string
+  }
+}
+
+type GoogleSheetsBatchGetResponse = {
+  valueRanges?: Array<{
+    range?: string
+    values?: string[][]
+  }>
 }
 
 class FlashcardDriveError extends Error {
@@ -120,6 +130,7 @@ function createLocalStateKey(userId: string) {
 function createDefaultLocalState(userId: string): FlashcardStudioDriveLocalState {
   return FlashcardStudioDriveLocalStateSchema.parse({
     schemaVersion: FLASHCARD_STUDIO_DRIVE_STORE_SCHEMA_VERSION,
+    storageKind: 'google-sheet',
     userId,
     appId: FLASHCARD_STUDIO_APP_ID,
     grant: null,
@@ -128,13 +139,17 @@ function createDefaultLocalState(userId: string): FlashcardStudioDriveLocalState
   })
 }
 
+function isLegacyDriveDeckName(deckName: string) {
+  return deckName.trim().endsWith('.chatbridge-flashcards.json')
+}
+
 function normalizeRecentDecks(recentDecks: FlashcardStudioDriveRecentDeck[]) {
   const seenDeckIds = new Set<string>()
   const deduped: FlashcardStudioDriveRecentDeck[] = []
 
   for (const recentDeck of recentDecks) {
     const parsed = FlashcardStudioDriveRecentDeckSchema.parse(recentDeck)
-    if (seenDeckIds.has(parsed.deckId)) {
+    if (isLegacyDriveDeckName(parsed.deckName) || seenDeckIds.has(parsed.deckId)) {
       continue
     }
 
@@ -157,6 +172,10 @@ function mergeRecentDeckSources(...sources: Array<FlashcardStudioDriveRecentDeck
   for (const source of sources) {
     for (const recentDeck of source ?? []) {
       const parsed = FlashcardStudioDriveRecentDeckSchema.parse(recentDeck)
+      if (isLegacyDriveDeckName(parsed.deckName)) {
+        continue
+      }
+
       const existing = byDeckId.get(parsed.deckId)
       if (!existing) {
         byDeckId.set(parsed.deckId, parsed)
@@ -245,24 +264,28 @@ function createGrant(localState: FlashcardStudioDriveLocalState): ChatBridgeAppA
     userId: localState.userId,
     appId: FLASHCARD_STUDIO_APP_ID,
     authMode: 'oauth',
-    permissionIds: ['drive.read', 'drive.write'],
-    credentialHandle: localState.grant?.credentialHandle ?? `flashcard-drive-grant:${crypto.randomUUID()}`,
+    permissionIds: ['sheets.read', 'sheets.write'],
+    credentialHandle: localState.grant?.credentialHandle ?? `flashcard-sheet-grant:${crypto.randomUUID()}`,
     status: 'granted',
     createdAt: localState.grant?.createdAt ?? now,
     updatedAt: now,
   })
 }
 
-function createDeckName(snapshot: FlashcardStudioAppSnapshot) {
-  const base = snapshot.deckTitle.trim().replace(/[\\/:*?"<>|]+/g, '-')
-  return `${base || 'flashcard-deck'}.chatbridge-flashcards.json`
+function createSpreadsheetTitle(snapshot: FlashcardStudioAppSnapshot) {
+  const baseTitle = snapshot.deckTitle.trim() || 'Flashcard deck'
+  const titledDeck = /flashcards/i.test(baseTitle) ? baseTitle : `${baseTitle} flashcards`
+  return titledDeck.slice(0, 120)
 }
 
-function createDriveStateFromLocalState(localState: FlashcardStudioDriveLocalState, options?: {
-  status?: FlashcardStudioDriveStatus
-  statusText?: string
-  detail?: string
-}) {
+function createDriveStateFromLocalState(
+  localState: FlashcardStudioDriveLocalState,
+  options?: {
+    status?: FlashcardStudioDriveStatus
+    statusText?: string
+    detail?: string
+  }
+) {
   const status =
     options?.status ?? (hasActiveToken(localState.userId) ? 'connected' : getPersistedGrantStatus(localState) ?? 'needs-auth')
   const latestDeckName = localState.lastSavedDeckName ?? localState.recentDecks[0]?.deckName
@@ -273,25 +296,25 @@ function createDriveStateFromLocalState(localState: FlashcardStudioDriveLocalSta
     statusText:
       options?.statusText ??
       (status === 'expired'
-        ? 'Reconnect Drive to continue'
+        ? 'Reconnect Google Sheets to continue'
         : status === 'connected'
-        ? 'Drive connected'
-        : localState.recentDecks.length > 0
-          ? 'Reconnect Drive to resume'
-          : 'Drive not connected'),
+          ? 'Google Sheets connected'
+          : localState.recentDecks.length > 0
+            ? 'Reconnect Google Sheets to resume'
+            : 'Google Sheets not connected'),
     detail:
       options?.detail ??
       (status === 'expired'
         ? latestDeckName
-          ? `Drive authorization expired before the host could reopen "${latestDeckName}" or keep it in sync. Reconnect and try again; your current deck is still open locally.`
-          : 'Drive authorization expired before save or resume could continue. Reconnect and try again; your current deck is still open locally.'
+          ? `Google Sheets authorization expired before the host could reopen "${latestDeckName}" or keep it in sync. Reconnect and try again; your current deck is still open locally.`
+          : 'Google Sheets authorization expired before save or resume could continue. Reconnect and try again; your current deck is still open locally.'
         : status === 'connected'
           ? localState.lastSavedDeckName
-            ? `Drive is ready for "${localState.lastSavedDeckName}" and future save or resume actions stay host-owned.`
-            : 'Drive is connected and ready to save this deck.'
+            ? `Google Sheets is ready for "${localState.lastSavedDeckName}" and future save or resume actions stay host-owned.`
+            : 'Google Sheets is connected and ready to open or save flashcards.'
           : localState.recentDecks[0]?.deckName
-            ? `Reconnect Drive to reopen "${localState.recentDecks[0].deckName}" or save new progress from this deck.`
-            : 'Connect Drive to save this deck or reopen a recent one.'),
+            ? `Reconnect Google Sheets to reopen "${localState.recentDecks[0].deckName}" or save new progress from this deck.`
+            : 'Connect Google Sheets to continue with Flashcard Studio or reopen a saved sheet.'),
     connectedAs: localState.connectedAs,
     recentDecks: localState.recentDecks,
     lastSavedDeckId: localState.lastSavedDeckId,
@@ -309,9 +332,13 @@ async function loadGoogleIdentityScript() {
     const existing = document.querySelector<HTMLScriptElement>('script[data-chatbridge-google-identity="true"]')
     if (existing) {
       existing.addEventListener('load', () => resolve(), { once: true })
-      existing.addEventListener('error', () => reject(new FlashcardDriveError('drive-error', 'Google Drive auth failed to load.')), {
-        once: true,
-      })
+      existing.addEventListener(
+        'error',
+        () => reject(new FlashcardDriveError('drive-error', 'Google Sheets auth failed to load.')),
+        {
+          once: true,
+        }
+      )
       if (getGoogleIdentityWindow().google?.accounts?.oauth2) {
         resolve()
       }
@@ -324,7 +351,7 @@ async function loadGoogleIdentityScript() {
     script.defer = true
     script.dataset.chatbridgeGoogleIdentity = 'true'
     script.onload = () => resolve()
-    script.onerror = () => reject(new FlashcardDriveError('drive-error', 'Google Drive auth failed to load.'))
+    script.onerror = () => reject(new FlashcardDriveError('drive-error', 'Google Sheets auth failed to load.'))
     document.head.appendChild(script)
   })
 
@@ -333,13 +360,13 @@ async function loadGoogleIdentityScript() {
 
 async function requestAccessToken(prompt: '' | 'consent') {
   if (!GOOGLE_CLIENT_ID) {
-    throw new FlashcardDriveError('missing-client-id', 'Google Drive client ID is not configured for this build.')
+    throw new FlashcardDriveError('missing-client-id', 'Google Sheets client ID is not configured for this build.')
   }
 
   await loadGoogleIdentityScript()
   const google = getGoogleIdentityWindow().google?.accounts?.oauth2
   if (!google) {
-    throw new FlashcardDriveError('drive-error', 'Google Drive auth is unavailable in this runtime.')
+    throw new FlashcardDriveError('drive-error', 'Google Sheets auth is unavailable in this runtime.')
   }
 
   return await new Promise<{ accessToken: string; expiresAt: number }>((resolve, reject) => {
@@ -351,7 +378,7 @@ async function requestAccessToken(prompt: '' | 'consent') {
           reject(
             new FlashcardDriveError(
               'auth-denied',
-              response.error_description || response.error || 'Google Drive permission was not granted.'
+              response.error_description || response.error || 'Google Sheets permission was not granted.'
             )
           )
           return
@@ -363,7 +390,7 @@ async function requestAccessToken(prompt: '' | 'consent') {
         })
       },
       error_callback: () => {
-        reject(new FlashcardDriveError('auth-denied', 'Google Drive permission was not granted.'))
+        reject(new FlashcardDriveError('auth-denied', 'Google Sheets permission was not granted.'))
       },
     })
 
@@ -400,12 +427,15 @@ async function ensureAccessToken(userId: string, localState: FlashcardStudioDriv
   }
 }
 
-async function fetchDriveJson<T>(accessToken: string, input: {
-  url: string
-  method?: 'GET' | 'POST' | 'PATCH'
-  body?: BodyInit
-  contentType?: string
-}) {
+async function fetchGoogleJson<T>(
+  accessToken: string,
+  input: {
+    url: string
+    method?: 'GET' | 'POST' | 'PATCH'
+    body?: BodyInit
+    contentType?: string
+  }
+) {
   const response = await fetch(input.url, {
     method: input.method ?? 'GET',
     headers: {
@@ -420,39 +450,18 @@ async function fetchDriveJson<T>(accessToken: string, input: {
     if (response.status === 401 || response.status === 403) {
       throw new FlashcardDriveError(
         'auth-expired',
-        'Drive authorization expired before the host could finish this action.'
+        'Google Sheets authorization expired before the host could finish this action.'
       )
     }
-    throw new FlashcardDriveError('drive-error', message || 'Google Drive request failed.')
+    throw new FlashcardDriveError('drive-error', message || 'Google request failed.')
   }
 
   return (await response.json()) as T
 }
 
-async function fetchDriveText(accessToken: string, url: string) {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  })
-
-  if (!response.ok) {
-    const message = await response.text().catch(() => '')
-    if (response.status === 401 || response.status === 403) {
-      throw new FlashcardDriveError(
-        'auth-expired',
-        'Drive authorization expired before the host could finish this action.'
-      )
-    }
-    throw new FlashcardDriveError('drive-error', message || 'Google Drive request failed.')
-  }
-
-  return await response.text()
-}
-
 async function fetchConnectedAccount(accessToken: string) {
   try {
-    const about = await fetchDriveJson<{
+    const about = await fetchGoogleJson<{
       user?: {
         displayName?: string
         emailAddress?: string
@@ -467,46 +476,254 @@ async function fetchConnectedAccount(accessToken: string) {
   }
 }
 
-function createMultipartBody(metadata: Record<string, unknown>, content: string) {
-  const boundary = `chatbridge-flashcard-${crypto.randomUUID()}`
-  const body = [
-    `--${boundary}`,
-    'Content-Type: application/json; charset=UTF-8',
-    '',
-    JSON.stringify(metadata),
-    `--${boundary}`,
-    'Content-Type: application/json',
-    '',
-    content,
-    `--${boundary}--`,
-    '',
-  ].join('\r\n')
-
-  return {
-    body,
-    contentType: `multipart/related; boundary=${boundary}`,
-  }
-}
-
 function mergeRecentDeck(localState: FlashcardStudioDriveLocalState, deck: FlashcardStudioDriveRecentDeck) {
   return normalizeRecentDecks([deck, ...localState.recentDecks.filter((entry) => entry.deckId !== deck.deckId)])
 }
 
-function buildSavedEnvelope(snapshot: FlashcardStudioAppSnapshot, deckId: string, deckName: string): FlashcardStudioDriveFileEnvelope {
-  return FlashcardStudioDriveFileEnvelopeSchema.parse({
-    schemaVersion: FLASHCARD_STUDIO_DRIVE_FILE_SCHEMA_VERSION,
-    appId: FLASHCARD_STUDIO_APP_ID,
-    savedAt: Date.now(),
-    deckId,
-    deckName,
-    snapshot: updateFlashcardStudioAppSnapshot(snapshot, {
-      drive: {
-        ...snapshot.drive,
-        status: 'connected',
-        statusText: 'Drive connected',
+function buildCardsSheetRows(snapshot: FlashcardStudioAppSnapshot) {
+  const confidenceByCardId = new Map(snapshot.studyMarks.map((mark) => [mark.cardId, mark.confidence] as const))
+
+  return [
+    ['Card ID', 'Prompt', 'Answer', 'Confidence'],
+    ...snapshot.cards.map((card) => [card.cardId, card.prompt, card.answer, confidenceByCardId.get(card.cardId) ?? '']),
+  ]
+}
+
+function buildStateSheetRows(snapshot: FlashcardStudioAppSnapshot) {
+  return [
+    ['Field', 'Value'],
+    ['layoutVersion', String(FLASHCARD_STUDIO_SHEET_LAYOUT_VERSION)],
+    ['request', snapshot.request ?? ''],
+    ['deckTitle', snapshot.deckTitle],
+    ['status', snapshot.status],
+    ['mode', snapshot.mode],
+    ['studyStatus', snapshot.studyStatus],
+    ['selectedCardId', snapshot.selectedCardId ?? ''],
+    ['studyPosition', String(snapshot.studyPosition)],
+    ['revealedCardId', snapshot.revealedCardId ?? ''],
+    ['lastAction', snapshot.lastAction],
+    ['lastUpdatedAt', String(snapshot.lastUpdatedAt)],
+  ]
+}
+
+async function createSpreadsheet(accessToken: string, title: string) {
+  const response = await fetchGoogleJson<GoogleSheetsSpreadsheet>(accessToken, {
+    url: 'https://sheets.googleapis.com/v4/spreadsheets',
+    method: 'POST',
+    body: JSON.stringify({
+      properties: {
+        title,
       },
+      sheets: [
+        {
+          properties: {
+            title: GOOGLE_SHEETS_CARDS_TAB,
+            gridProperties: {
+              frozenRowCount: 1,
+            },
+          },
+        },
+        {
+          properties: {
+            title: GOOGLE_SHEETS_STATE_TAB,
+          },
+        },
+      ],
     }),
+    contentType: 'application/json',
   })
+
+  return {
+    spreadsheetId: response.spreadsheetId,
+    title: response.properties?.title?.trim() || title,
+  }
+}
+
+async function renameSpreadsheet(accessToken: string, spreadsheetId: string, title: string) {
+  return await fetchGoogleJson<GoogleDriveFileMetadata>(accessToken, {
+    url: `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=id,name,modifiedTime`,
+    method: 'PATCH',
+    body: JSON.stringify({
+      name: title,
+    }),
+    contentType: 'application/json',
+  })
+}
+
+async function clearSpreadsheetValues(accessToken: string, spreadsheetId: string) {
+  await fetchGoogleJson<{ spreadsheetId: string }>(accessToken, {
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchClear`,
+    method: 'POST',
+    body: JSON.stringify({
+      ranges: [`${GOOGLE_SHEETS_CARDS_TAB}!A:D`, `${GOOGLE_SHEETS_STATE_TAB}!A:B`],
+    }),
+    contentType: 'application/json',
+  })
+}
+
+async function writeSpreadsheetValues(accessToken: string, spreadsheetId: string, snapshot: FlashcardStudioAppSnapshot) {
+  await fetchGoogleJson<{ spreadsheetId: string }>(accessToken, {
+    url: `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+    method: 'POST',
+    body: JSON.stringify({
+      valueInputOption: 'RAW',
+      data: [
+        {
+          range: `${GOOGLE_SHEETS_CARDS_TAB}!A1:D${Math.max(1, snapshot.cards.length + 1)}`,
+          majorDimension: 'ROWS',
+          values: buildCardsSheetRows(snapshot),
+        },
+        {
+          range: `${GOOGLE_SHEETS_STATE_TAB}!A1:B12`,
+          majorDimension: 'ROWS',
+          values: buildStateSheetRows(snapshot),
+        },
+      ],
+    }),
+    contentType: 'application/json',
+  })
+}
+
+function getBatchGetRangeValues(response: GoogleSheetsBatchGetResponse, sheetTitle: string) {
+  return (
+    response.valueRanges?.find((valueRange) => valueRange.range?.startsWith(`${sheetTitle}!`))?.values?.map((row) =>
+      row.map((cell) => String(cell))
+    ) ?? []
+  )
+}
+
+function parseStateRows(rows: string[][]) {
+  const byField = new Map<string, string>()
+
+  for (const row of rows.slice(1)) {
+    const field = row[0]?.trim()
+    if (!field) {
+      continue
+    }
+
+    byField.set(field, row[1]?.trim() ?? '')
+  }
+
+  return byField
+}
+
+function parseWithFallback<TSchema extends z.ZodTypeAny>(
+  schema: TSchema,
+  value: unknown,
+  fallback: z.infer<TSchema>
+): z.infer<TSchema> {
+  const parsed = schema.safeParse(value)
+  return parsed.success ? parsed.data : fallback
+}
+
+function parseSpreadsheetSnapshot(
+  response: GoogleSheetsBatchGetResponse,
+  currentSnapshot: FlashcardStudioAppSnapshot,
+  selectedDeck: FlashcardStudioDriveRecentDeck
+) {
+  const cardRows = getBatchGetRangeValues(response, GOOGLE_SHEETS_CARDS_TAB)
+  const stateRows = getBatchGetRangeValues(response, GOOGLE_SHEETS_STATE_TAB)
+
+  if (cardRows.length === 0 || stateRows.length === 0) {
+    throw new FlashcardDriveError(
+      'invalid-file',
+      'The selected Google Sheet does not match the Flashcard Studio workbook format.'
+    )
+  }
+
+  const cards = cardRows
+    .slice(1)
+    .filter((row) => row.some((cell) => cell.trim().length > 0))
+    .map((row) => {
+      const cardId = row[0]?.trim()
+      const prompt = row[1]?.trim()
+      const answer = row[2]?.trim()
+
+      if (!cardId || !prompt || !answer) {
+        throw new FlashcardDriveError(
+          'invalid-file',
+          'The selected Google Sheet contains an incomplete flashcard row.'
+        )
+      }
+
+      return {
+        cardId,
+        prompt,
+        answer,
+      }
+    })
+
+  if (cards.length === 0) {
+    throw new FlashcardDriveError('invalid-file', 'The selected Google Sheet does not contain any saved flashcards.')
+  }
+
+  const studyMarks = cardRows
+    .slice(1)
+    .filter((row) => row.some((cell) => cell.trim().length > 0))
+    .flatMap((row) => {
+      const cardId = row[0]?.trim()
+      const confidence = row[3]?.trim().toLowerCase()
+      if (!cardId || !confidence) {
+        return []
+      }
+
+      const parsedConfidence = FlashcardStudioStudyConfidenceSchema.safeParse(confidence)
+      if (!parsedConfidence.success) {
+        throw new FlashcardDriveError(
+          'invalid-file',
+          'The selected Google Sheet contains an invalid flashcard confidence value.'
+        )
+      }
+
+      return [
+        {
+          cardId,
+          confidence: parsedConfidence.data,
+        },
+      ]
+    })
+
+  const stateByField = parseStateRows(stateRows)
+  const parseNumber = (value?: string) => {
+    const parsed = Number.parseInt(value ?? '', 10)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  const safeRequest = stateByField.get('request') || currentSnapshot.request
+  const safeDeckTitle = stateByField.get('deckTitle') || selectedDeck.deckName || currentSnapshot.deckTitle
+  const safeStatus = parseWithFallback(
+    FlashcardStudioDeckStatusSchema,
+    stateByField.get('status'),
+    cards.length === 0 ? 'empty' : 'editing'
+  )
+  const safeMode = parseWithFallback(FlashcardStudioModeSchema, stateByField.get('mode'), 'authoring')
+  const safeStudyStatus = parseWithFallback(FlashcardStudioStudyStatusSchema, stateByField.get('studyStatus'), 'idle')
+  const safeLastAction = parseWithFallback(
+    FlashcardStudioAuthoringActionSchema,
+    stateByField.get('lastAction'),
+    'updated-card'
+  )
+
+  try {
+    return createFlashcardStudioAppSnapshot({
+      request: safeRequest,
+      deckTitle: safeDeckTitle,
+      status: safeStatus,
+      mode: safeMode,
+      studyStatus: safeStudyStatus,
+      cards,
+      selectedCardId: stateByField.get('selectedCardId') || undefined,
+      studyPosition: parseNumber(stateByField.get('studyPosition')),
+      revealedCardId: stateByField.get('revealedCardId') || undefined,
+      studyMarks,
+      lastAction: safeLastAction,
+      lastUpdatedAt: parseNumber(stateByField.get('lastUpdatedAt')) ?? Date.now(),
+    })
+  } catch {
+    throw new FlashcardDriveError(
+      'invalid-file',
+      'The selected Google Sheet does not match the Flashcard Studio workbook format.'
+    )
+  }
 }
 
 function getDriveFailureCode(error: unknown): FlashcardDriveError['code'] | null {
@@ -584,7 +801,7 @@ export async function connectFlashcardStudioDrive(snapshot: FlashcardStudioAppSn
   return updateFlashcardStudioAppSnapshot(snapshot, {
     drive: createDriveStateFromLocalState(nextLocalState, {
       status: 'connected',
-      statusText: 'Drive connected',
+      statusText: 'Google Sheets connected',
     }),
     lastUpdatedAt: Date.now(),
   })
@@ -592,37 +809,33 @@ export async function connectFlashcardStudioDrive(snapshot: FlashcardStudioAppSn
 
 export async function saveFlashcardStudioDriveSnapshot(snapshot: FlashcardStudioAppSnapshot) {
   if (snapshot.cardCount === 0) {
-    throw new FlashcardDriveError('missing-deck', 'Add at least one card before saving a Drive deck.')
+    throw new FlashcardDriveError('missing-deck', 'Add at least one card before saving to Google Sheets.')
   }
 
   const userId = await getStableUserId()
   const localState = mergeLocalStateWithSnapshot(await readLocalState(userId), snapshot)
   const accessToken = await ensureAccessToken(userId, localState)
-  const deckName = createDeckName(snapshot)
+  const spreadsheetTitle = createSpreadsheetTitle(snapshot)
   const existingDeckId = snapshot.drive.lastSavedDeckId ?? localState.lastSavedDeckId
-  const deckId = existingDeckId ?? crypto.randomUUID()
-  const envelope = buildSavedEnvelope(snapshot, deckId, deckName)
-  const metadata = {
-    name: deckName,
-    mimeType: 'application/json',
-    appProperties: {
-      chatbridgeApp: FLASHCARD_STUDIO_APP_ID,
-      chatbridgeSchemaVersion: String(FLASHCARD_STUDIO_DRIVE_FILE_SCHEMA_VERSION),
-    },
-  }
-  const multipart = createMultipartBody(metadata, JSON.stringify(envelope))
 
-  let response: GoogleDriveFileMetadata
+  let spreadsheetId: string
+  let spreadsheetName: string
+  let modifiedAt = Date.now()
 
   try {
-    response = await fetchDriveJson<GoogleDriveFileMetadata>(accessToken, {
-      url: existingDeckId
-        ? `https://www.googleapis.com/upload/drive/v3/files/${existingDeckId}?uploadType=multipart&fields=id,name,modifiedTime`
-        : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime',
-      method: existingDeckId ? 'PATCH' : 'POST',
-      body: multipart.body,
-      contentType: multipart.contentType,
-    })
+    if (existingDeckId) {
+      const renamedSheet = await renameSpreadsheet(accessToken, existingDeckId, spreadsheetTitle)
+      spreadsheetId = renamedSheet.id
+      spreadsheetName = renamedSheet.name
+      modifiedAt = renamedSheet.modifiedTime ? Date.parse(renamedSheet.modifiedTime) || Date.now() : Date.now()
+    } else {
+      const createdSpreadsheet = await createSpreadsheet(accessToken, spreadsheetTitle)
+      spreadsheetId = createdSpreadsheet.spreadsheetId
+      spreadsheetName = createdSpreadsheet.title
+    }
+
+    await clearSpreadsheetValues(accessToken, spreadsheetId)
+    await writeSpreadsheetValues(accessToken, spreadsheetId, snapshot)
   } catch (error) {
     if (getDriveFailureCode(error) === 'auth-expired') {
       await persistExpiredGrantState(userId, localState)
@@ -630,28 +843,27 @@ export async function saveFlashcardStudioDriveSnapshot(snapshot: FlashcardStudio
     throw error
   }
 
-  const modifiedAt = Date.parse(response.modifiedTime) || Date.now()
   const connectedAs = await fetchConnectedAccount(accessToken)
   const nextLocalState = await writeLocalState({
     ...localState,
     grant: createGrant(localState),
     connectedAs: connectedAs ?? localState.connectedAs,
     recentDecks: mergeRecentDeck(localState, {
-      deckId: response.id,
-      deckName: response.name,
+      deckId: spreadsheetId,
+      deckName: spreadsheetName,
       modifiedAt,
       lastOpenedAt: Date.now(),
     }),
-    lastSavedDeckId: response.id,
-    lastSavedDeckName: response.name,
+    lastSavedDeckId: spreadsheetId,
+    lastSavedDeckName: spreadsheetName,
     lastSavedAt: modifiedAt,
   })
 
   return updateFlashcardStudioAppSnapshot(snapshot, {
     drive: createDriveStateFromLocalState(nextLocalState, {
       status: 'connected',
-      statusText: 'Drive connected',
-      detail: `Saved "${response.name}" to Drive through the host-managed connector.`,
+      statusText: 'Google Sheets connected',
+      detail: `Saved "${spreadsheetName}" to Google Sheets through the host-managed connector.`,
     }),
     lastUpdatedAt: Date.now(),
   })
@@ -662,34 +874,26 @@ export async function loadFlashcardStudioDriveSnapshot(deckId: string, currentSn
   const localState = mergeLocalStateWithSnapshot(await readLocalState(userId), currentSnapshot)
   const selectedDeck = localState.recentDecks.find((deck) => deck.deckId === deckId)
   if (!selectedDeck) {
-    throw new FlashcardDriveError('missing-deck', 'That saved deck is not available in the local resume list.')
+    throw new FlashcardDriveError('missing-deck', 'That saved sheet is not available in the local resume list.')
   }
 
   const accessToken = await ensureAccessToken(userId, localState)
-  let rawContent: string
+  let response: GoogleSheetsBatchGetResponse
 
   try {
-    rawContent = await fetchDriveText(accessToken, `https://www.googleapis.com/drive/v3/files/${deckId}?alt=media`)
+    const cardsRange = encodeURIComponent(`${GOOGLE_SHEETS_CARDS_TAB}!A:D`)
+    const stateRange = encodeURIComponent(`${GOOGLE_SHEETS_STATE_TAB}!A:B`)
+    response = await fetchGoogleJson<GoogleSheetsBatchGetResponse>(accessToken, {
+      url: `https://sheets.googleapis.com/v4/spreadsheets/${deckId}/values:batchGet?ranges=${cardsRange}&ranges=${stateRange}`,
+    })
   } catch (error) {
     if (getDriveFailureCode(error) === 'auth-expired') {
       await persistExpiredGrantState(userId, localState)
     }
     throw error
   }
-  let parsedContent: unknown
 
-  try {
-    parsedContent = JSON.parse(rawContent)
-  } catch {
-    throw new FlashcardDriveError('invalid-file', 'The selected Drive deck is not valid JSON.')
-  }
-
-  const parsedEnvelope = FlashcardStudioDriveFileEnvelopeSchema.safeParse(parsedContent)
-  if (!parsedEnvelope.success) {
-    throw new FlashcardDriveError('invalid-file', 'The selected Drive deck does not match the saved Flashcard schema.')
-  }
-
-  const loadedSnapshot = FlashcardStudioAppSnapshotSchema.parse(parsedEnvelope.data.snapshot)
+  const loadedSnapshot = parseSpreadsheetSnapshot(response, currentSnapshot, selectedDeck)
   const nextLocalState = await writeLocalState({
     ...localState,
     recentDecks: mergeRecentDeck(localState, {
@@ -697,17 +901,17 @@ export async function loadFlashcardStudioDriveSnapshot(deckId: string, currentSn
       lastOpenedAt: Date.now(),
       modifiedAt: selectedDeck.modifiedAt,
     }),
-    lastSavedDeckId: parsedEnvelope.data.deckId,
-    lastSavedDeckName: parsedEnvelope.data.deckName,
-    lastSavedAt: parsedEnvelope.data.savedAt,
+    lastSavedDeckId: selectedDeck.deckId,
+    lastSavedDeckName: selectedDeck.deckName,
+    lastSavedAt: Date.now(),
   })
 
   return updateFlashcardStudioAppSnapshot(loadedSnapshot, {
     request: currentSnapshot.request ?? loadedSnapshot.request,
     drive: createDriveStateFromLocalState(nextLocalState, {
       status: 'connected',
-      statusText: 'Drive connected',
-      detail: `Loaded "${parsedEnvelope.data.deckName}" from the saved Drive deck list.`,
+      statusText: 'Google Sheets connected',
+      detail: `Loaded "${selectedDeck.deckName}" from the saved Google Sheets list.`,
     }),
     lastUpdatedAt: Date.now(),
   })
@@ -718,7 +922,7 @@ export function getFlashcardDriveErrorMessage(error: unknown) {
     return error.message
   }
 
-  return error instanceof Error ? error.message : 'Flashcard Drive action failed.'
+  return error instanceof Error ? error.message : 'Flashcard Google Sheets action failed.'
 }
 
 export function getFlashcardDriveFailureState(snapshot: FlashcardStudioAppSnapshot, error: unknown) {
@@ -729,20 +933,20 @@ export function getFlashcardDriveFailureState(snapshot: FlashcardStudioAppSnapsh
   if (code === 'auth-expired') {
     return {
       status: 'expired' as const,
-      statusText: 'Reconnect Drive to continue',
+      statusText: 'Reconnect Google Sheets to continue',
       detail: latestDeckName
-        ? `Drive authorization expired before the host could reopen "${latestDeckName}" or keep it in sync. Reconnect and try again; your current deck is still open locally.`
-        : 'Drive authorization expired before the host could finish this action. Reconnect and try again; your current deck is still open locally.',
+        ? `Google Sheets authorization expired before the host could reopen "${latestDeckName}" or keep it in sync. Reconnect and try again; your current deck is still open locally.`
+        : 'Google Sheets authorization expired before the host could finish this action. Reconnect and try again; your current deck is still open locally.',
     }
   }
 
   if (code === 'auth-denied' || code === 'needs-auth') {
     return {
       status: 'needs-auth' as const,
-      statusText: snapshot.drive.recentDecks.length > 0 ? 'Reconnect Drive to resume' : 'Drive not connected',
+      statusText: snapshot.drive.recentDecks.length > 0 ? 'Reconnect Google Sheets to resume' : 'Google Sheets not connected',
       detail:
-        detail === 'Google Drive permission was not granted.'
-          ? 'Google Drive permission was not granted. Connect Drive when you want to save or reopen decks.'
+        detail === 'Google Sheets permission was not granted.'
+          ? 'Google Sheets permission was not granted. Connect Google Sheets when you want to save or reopen flashcards.'
           : detail,
     }
   }
@@ -750,14 +954,14 @@ export function getFlashcardDriveFailureState(snapshot: FlashcardStudioAppSnapsh
   if (code === 'missing-client-id') {
     return {
       status: 'error' as const,
-      statusText: 'Drive unavailable',
+      statusText: 'Google Sheets unavailable',
       detail,
     }
   }
 
   return {
     status: 'error' as const,
-    statusText: 'Drive action blocked',
+    statusText: 'Google Sheets action blocked',
     detail,
   }
 }
@@ -776,7 +980,7 @@ export function createFlashcardDriveErrorSnapshot(
     typeof input === 'string'
       ? {
           status: 'error' as const,
-          statusText: 'Drive action blocked',
+          statusText: 'Google Sheets action blocked',
           detail: input,
         }
       : input

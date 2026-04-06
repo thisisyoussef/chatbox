@@ -102,9 +102,9 @@ describe('shared flashcard studio helpers', () => {
     expect(getFlashcardStudioSummary(snapshot)).not.toContain('Plants use sunlight to make food.')
   })
 
-  it('keeps Drive reconnect metadata bounded inside the summary and resume hint', () => {
+  it('keeps Google Sheets reconnect metadata bounded inside the summary and resume hint', () => {
     const snapshot = createFlashcardStudioAppSnapshot({
-      request: 'Reconnect Drive so I can resume my science deck.',
+      request: 'Reconnect Google Sheets so I can resume my science deck.',
       deckTitle: 'Science review',
       cards: [
         {
@@ -119,26 +119,26 @@ describe('shared flashcard studio helpers', () => {
         recentDecks: [
           {
             deckId: 'drive-deck-science-review',
-            deckName: 'Science review.chatbridge-flashcards.json',
+            deckName: 'Science review flashcards',
             modifiedAt: 1_717_000_100_000,
           },
         ],
         lastSavedDeckId: 'drive-deck-science-review',
-        lastSavedDeckName: 'Science review.chatbridge-flashcards.json',
+        lastSavedDeckName: 'Science review flashcards',
         lastSavedAt: 1_717_000_100_000,
       },
       lastAction: 'updated-card',
       lastUpdatedAt: 5_000,
     })
 
-    expect(snapshot.summary).toContain('Drive resume is available for 1 saved deck after reconnect.')
-    expect(snapshot.resumeHint).toContain('Reconnect Drive to reopen "Science review.chatbridge-flashcards.json".')
+    expect(snapshot.summary).toContain('Google Sheets resume is available for 1 saved sheet after reconnect.')
+    expect(snapshot.resumeHint).toContain('Reconnect Google Sheets to reopen "Science review flashcards".')
     expect(snapshot.summary).not.toContain('It helps the cell produce energy.')
   })
 
   it('surfaces expired Drive auth as reconnect-required without dropping bounded deck context', () => {
     const snapshot = createFlashcardStudioAppSnapshot({
-      request: 'Reconnect Drive so I can keep saving my science deck.',
+      request: 'Reconnect Google Sheets so I can keep saving my science deck.',
       deckTitle: 'Science review',
       cards: [
         {
@@ -153,22 +153,22 @@ describe('shared flashcard studio helpers', () => {
         recentDecks: [
           {
             deckId: 'drive-deck-science-review',
-            deckName: 'Science review.chatbridge-flashcards.json',
+            deckName: 'Science review flashcards',
             modifiedAt: 1_717_000_100_000,
           },
         ],
         lastSavedDeckId: 'drive-deck-science-review',
-        lastSavedDeckName: 'Science review.chatbridge-flashcards.json',
+        lastSavedDeckName: 'Science review flashcards',
         lastSavedAt: 1_717_000_100_000,
       },
       lastAction: 'updated-card',
       lastUpdatedAt: 6_000,
     })
 
-    expect(snapshot.drive.statusText).toBe('Reconnect Drive to continue')
-    expect(snapshot.drive.detail).toContain('Drive authorization expired')
-    expect(snapshot.summary).toContain('Drive auth expired')
-    expect(snapshot.resumeHint).toContain('Reconnect Drive to restore saved deck access.')
+    expect(snapshot.drive.statusText).toBe('Reconnect Google Sheets to continue')
+    expect(snapshot.drive.detail).toContain('Google Sheets authorization expired')
+    expect(snapshot.summary).toContain('Google Sheets auth expired')
+    expect(snapshot.resumeHint).toContain('Reconnect Google Sheets to restore saved sheet access.')
     expect(snapshot.summary).not.toContain('It helps the cell produce energy.')
   })
 

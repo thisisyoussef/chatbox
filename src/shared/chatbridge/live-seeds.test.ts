@@ -179,7 +179,7 @@ describe('chatbridge live seed fixtures', () => {
     expect(fixture.chatBridgeAppRecords?.events).toHaveLength(2)
   })
 
-  it('builds a Flashcard Studio Drive resume fixture with explicit reconnect metadata', () => {
+  it('builds a Flashcard Studio Google Sheets resume fixture with explicit reconnect metadata', () => {
     const fixture = buildChatBridgeFlashcardStudioDriveResumeSessionFixture()
     const assistantMessage = fixture.messages.find((message) => message.id === 'msg-flashcard-drive-assistant')
     const appPart = assistantMessage?.contentParts.find((part) => part.type === 'app')
@@ -190,7 +190,7 @@ describe('chatbridge live seed fixtures', () => {
       mode: 'study',
       drive: {
         status: 'needs-auth',
-        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        lastSavedDeckName: 'Biology review flashcards',
         recentDecks: [
           {
             deckId: 'drive-deck-biology-review',
@@ -205,7 +205,7 @@ describe('chatbridge live seed fixtures', () => {
     expect(fixture.chatBridgeAppRecords?.events).toHaveLength(2)
   })
 
-  it('builds a Flashcard Studio Drive denied reconnect fixture that keeps the local deck open', () => {
+  it('builds a Flashcard Studio Google Sheets denied reconnect fixture that keeps the local deck open', () => {
     const fixture = buildChatBridgeFlashcardStudioDriveDeniedSessionFixture()
     const assistantMessage = fixture.messages.find((message) => message.id === 'msg-flashcard-drive-denied-assistant')
     const appPart = assistantMessage?.contentParts.find((part) => part.type === 'app')
@@ -216,9 +216,9 @@ describe('chatbridge live seed fixtures', () => {
       mode: 'study',
       drive: {
         status: 'needs-auth',
-        statusText: 'Reconnect Drive to resume',
-        detail: 'Google Drive permission was not granted. Connect Drive when you want to save or reopen decks.',
-        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        statusText: 'Reconnect Google Sheets to resume',
+        detail: 'Google Sheets permission was not granted. Connect Google Sheets when you want to save or reopen flashcards.',
+        lastSavedDeckName: 'Biology review flashcards',
       },
     })
     expect(fixture.chatBridgeAppRecords?.instances[0]).toMatchObject({
@@ -227,7 +227,7 @@ describe('chatbridge live seed fixtures', () => {
     })
   })
 
-  it('builds a Flashcard Studio Drive expired auth fixture that keeps reconnect-required state explicit', () => {
+  it('builds a Flashcard Studio Google Sheets expired auth fixture that keeps reconnect-required state explicit', () => {
     const fixture = buildChatBridgeFlashcardStudioDriveExpiredSessionFixture()
     const assistantMessage = fixture.messages.find((message) => message.id === 'msg-flashcard-drive-expired-assistant')
     const appPart = assistantMessage?.contentParts.find((part) => part.type === 'app')
@@ -238,12 +238,12 @@ describe('chatbridge live seed fixtures', () => {
       mode: 'study',
       drive: {
         status: 'expired',
-        statusText: 'Reconnect Drive to continue',
-        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        statusText: 'Reconnect Google Sheets to continue',
+        lastSavedDeckName: 'Biology review flashcards',
       },
     })
     expect((appPart && appPart.type === 'app' ? appPart.snapshot : undefined) as { resumeHint?: string }).toMatchObject({
-      resumeHint: expect.stringContaining('Reconnect Drive to restore saved deck access.'),
+      resumeHint: expect.stringContaining('Reconnect Google Sheets to restore saved sheet access.'),
     })
     expect(fixture.chatBridgeAppRecords?.instances[0]).toMatchObject({
       appId: 'flashcard-studio',

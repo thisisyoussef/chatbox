@@ -27,7 +27,14 @@ import type { Message } from '@shared/types'
 import platform from '@/platform'
 import { getIntelligentReviewedAppRouteDecision, getReviewedAppRouteDecision } from './router/decision'
 
-const DEFAULT_LIVE_REVIEWED_APP_PERMISSIONS = ['session.context.read', 'weather.read', 'drive.read', 'drive.write'] as const
+const DEFAULT_LIVE_REVIEWED_APP_PERMISSIONS = [
+  'session.context.read',
+  'weather.read',
+  'drive.read',
+  'drive.write',
+  'sheets.read',
+  'sheets.write',
+] as const
 
 const ChessPrepareSessionInputSchema = z.object({
   request: z.string().trim().min(1),

@@ -19,7 +19,7 @@ function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
     toolCallId: 'tool-reviewed-launch-flashcard-drive-recovery-1',
     toolName: 'flashcard_studio_open',
     args: {
-      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+      request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
     },
     result: {
       kind: 'chatbridge.host.tool.record.v1',
@@ -32,7 +32,7 @@ function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
       retryClassification: 'safe',
       invocation: {
         args: {
-          request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+          request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
         },
       },
       outcome: {
@@ -42,8 +42,8 @@ function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
           appName: 'Flashcard Studio',
           capability: 'open',
           launchReady: true,
-          summary: 'Prepared the reviewed Flashcard Studio Drive recovery request for the host-owned launch path.',
-          request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+          summary: 'Prepared the reviewed Flashcard Studio Google Sheets recovery request for the host-owned launch path.',
+          request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
         },
       },
     },
@@ -63,7 +63,7 @@ function createSessionWithLaunchPart(): { session: Session; launchPart: MessageA
   return {
     session: {
       id: 'session-reviewed-launch-flashcard-drive-recovery-1',
-      name: 'Reviewed Flashcard Studio Drive recovery scenario',
+      name: 'Reviewed Flashcard Studio Google Sheets recovery scenario',
       messages: [assistantMessage],
       settings: {},
     },
@@ -76,7 +76,7 @@ function getLaunchPart(session: Session): MessageAppPart {
   const launchPart = message?.contentParts.find((part): part is MessageAppPart => part.type === 'app')
 
   if (!launchPart) {
-    throw new Error('Expected the Flashcard Studio Drive recovery scenario to keep the launch part.')
+    throw new Error('Expected the Flashcard Studio Google Sheets recovery scenario to keep the launch part.')
   }
 
   return launchPart
@@ -99,7 +99,7 @@ function createDeckSnapshot(
   overrides: Partial<NonNullable<Parameters<typeof createFlashcardStudioAppSnapshot>[0]>> = {}
 ) {
   return createFlashcardStudioAppSnapshot({
-    request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+    request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
     deckTitle: 'Biology review',
     cards: [
       {
@@ -120,7 +120,7 @@ function createDeckSnapshot(
   })
 }
 
-describe('ChatBridge Flashcard Studio Drive auth recovery lifecycle', () => {
+describe('ChatBridge Flashcard Studio Google Sheets auth recovery lifecycle', () => {
   it('returns denied consent to reconnect guidance without dropping the deck', () =>
     traceScenario('returns denied consent to reconnect guidance without dropping the deck', () => {
       const { session, launchPart } = createSessionWithLaunchPart()
@@ -136,13 +136,13 @@ describe('ChatBridge Flashcard Studio Drive auth recovery lifecycle', () => {
       const deniedSnapshot = createDeckSnapshot({
         drive: {
           status: 'needs-auth',
-          statusText: 'Reconnect Drive to resume',
+          statusText: 'Reconnect Google Sheets to resume',
           detail:
-            'Google Drive permission was not granted. Connect Drive when you want to save or reopen decks.',
+            'Google Sheets permission was not granted. Connect Google Sheets when you want to save or reopen flashcards.',
           recentDecks: [
             {
               deckId: 'drive-deck-biology-review',
-              deckName: 'Biology review.chatbridge-flashcards.json',
+              deckName: 'Biology review flashcards',
               modifiedAt: 1_717_000_100_000,
             },
           ],
@@ -155,9 +155,9 @@ describe('ChatBridge Flashcard Studio Drive auth recovery lifecycle', () => {
         part: getLaunchPart(bootstrapped),
         snapshot: deniedSnapshot,
         payload: {
-          action: 'drive.connect',
+          action: 'sheets.connect',
           outcome: 'error',
-          detail: 'Google Drive permission was not granted.',
+          detail: 'Google Sheets permission was not granted.',
         },
         summaryForModel: deniedSnapshot.summary,
         now: () => 31_000,
@@ -168,17 +168,17 @@ describe('ChatBridge Flashcard Studio Drive auth recovery lifecycle', () => {
         cardCount: 2,
         drive: {
           status: 'needs-auth',
-          statusText: 'Reconnect Drive to resume',
+          statusText: 'Reconnect Google Sheets to resume',
         },
       })
-      expect(deniedPart.summaryForModel).toContain('Drive resume is available for 1 saved deck after reconnect.')
+      expect(deniedPart.summaryForModel).toContain('Google Sheets resume is available for 1 saved sheet after reconnect.')
       expect((deniedPart.snapshot as { resumeHint?: string }).resumeHint).toContain(
-        'Reconnect Drive to reopen "Biology review.chatbridge-flashcards.json".'
+        'Reconnect Google Sheets to reopen "Biology review flashcards".'
       )
     }))
 
-  it('keeps expired auth explicit when save or load fails after a prior Drive connection', () =>
-    traceScenario('keeps expired auth explicit when save or load fails after a prior Drive connection', () => {
+  it('keeps expired auth explicit when save or load fails after a prior Google Sheets connection', () =>
+    traceScenario('keeps expired auth explicit when save or load fails after a prior Google Sheets connection', () => {
       const { session, launchPart } = createSessionWithLaunchPart()
 
       const bootstrapped = applyReviewedAppLaunchBootstrapToSession(session, {
@@ -192,18 +192,18 @@ describe('ChatBridge Flashcard Studio Drive auth recovery lifecycle', () => {
       const expiredSnapshot = createDeckSnapshot({
         drive: {
           status: 'expired',
-          statusText: 'Reconnect Drive to continue',
+          statusText: 'Reconnect Google Sheets to continue',
           detail:
-            'Drive authorization expired before the host could finish this action. Reconnect and try again; your current deck is still open locally.',
+            'Google Sheets authorization expired before the host could finish this action. Reconnect and try again; your current deck is still open locally.',
           recentDecks: [
             {
               deckId: 'drive-deck-biology-review',
-              deckName: 'Biology review.chatbridge-flashcards.json',
+              deckName: 'Biology review flashcards',
               modifiedAt: 1_717_000_100_000,
             },
           ],
           lastSavedDeckId: 'drive-deck-biology-review',
-          lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+          lastSavedDeckName: 'Biology review flashcards',
           lastSavedAt: 1_717_000_300_000,
         },
         lastUpdatedAt: 36_000,
@@ -214,7 +214,7 @@ describe('ChatBridge Flashcard Studio Drive auth recovery lifecycle', () => {
         part: getLaunchPart(bootstrapped),
         snapshot: expiredSnapshot,
         payload: {
-          action: 'drive.save',
+          action: 'sheets.save',
           outcome: 'expired',
         },
         summaryForModel: expiredSnapshot.summary,
@@ -226,13 +226,13 @@ describe('ChatBridge Flashcard Studio Drive auth recovery lifecycle', () => {
         cardCount: 2,
         drive: {
           status: 'expired',
-          statusText: 'Reconnect Drive to continue',
-          lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+          statusText: 'Reconnect Google Sheets to continue',
+          lastSavedDeckName: 'Biology review flashcards',
         },
       })
-      expect(degradedPart.summaryForModel).toContain('Drive auth expired')
+      expect(degradedPart.summaryForModel).toContain('Google Sheets auth expired')
       expect((degradedPart.snapshot as { resumeHint?: string }).resumeHint).toContain(
-        'Reconnect Drive to restore saved deck access.'
+        'Reconnect Google Sheets to restore saved sheet access.'
       )
     }))
 })
