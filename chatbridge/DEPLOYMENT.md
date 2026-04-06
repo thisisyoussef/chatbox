@@ -9,6 +9,7 @@ checked-in execution contract.
 
 - Provider: Vercel
 - Project: `chatbox-web` (`prj_sDopuiczqA5vk8DFehkhClQkOooe`)
+- Current submission URL: `https://chatbox-web-two.vercel.app/`
 - Checked-in config: `vercel.json`
 - Mainline sync workflow: `.github/workflows/vercel-main-sync.yml`
 - Mainline deploy script: `scripts/deploy-vercel-production.sh`
