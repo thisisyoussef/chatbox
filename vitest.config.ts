@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => ({
   test: {
     globals: true,
     environment: 'node',
+    globalSetup: ['./scripts/vitest-global-setup.mjs'],
     env: {
       ...loadEnv(mode, process.cwd(), ''),
       NODE_ENV: 'test',
