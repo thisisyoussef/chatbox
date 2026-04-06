@@ -72,6 +72,7 @@ export type FlashcardStudioStudyCounts = z.infer<typeof FlashcardStudioStudyCoun
 
 export const FlashcardStudioDriveStatusSchema = z.enum([
   'needs-auth',
+  'expired',
   'connecting',
   'connected',
   'saving',
@@ -418,6 +419,8 @@ function buildFlashcardStudioDriveStatusText(input: {
   recentDecks: FlashcardStudioDriveRecentDeck[]
 }) {
   switch (input.status) {
+    case 'expired':
+      return 'Reconnect Drive to continue'
     case 'connecting':
       return 'Connecting Drive'
     case 'connected':
@@ -444,6 +447,10 @@ function buildFlashcardStudioDriveDetail(input: {
   const latestDeckName = input.lastSavedDeckName ?? input.recentDecks[0]?.deckName
 
   switch (input.status) {
+    case 'expired':
+      return latestDeckName
+        ? `Drive authorization expired before the host could reopen "${latestDeckName}" or keep it in sync. Reconnect and try again; your current deck is still open locally.`
+        : 'Drive authorization expired before save or resume could continue. Reconnect and try again; your current deck is still open locally.'
     case 'connecting':
       return 'Waiting for Google Drive permission so the host can save and reopen this deck.'
     case 'connected':
@@ -739,6 +746,10 @@ function buildFlashcardStudioSummary(snapshot: {
       ? snapshot.drive.lastSavedDeckName
         ? `Drive is connected for "${snapshot.drive.lastSavedDeckName}".`
         : 'Drive is connected for save and resume.'
+      : snapshot.drive.status === 'expired'
+        ? snapshot.drive.lastSavedDeckName
+          ? `Drive auth expired before "${snapshot.drive.lastSavedDeckName}" could be reopened or synced.`
+          : 'Drive auth expired before save or resume could continue.'
       : snapshot.drive.status === 'needs-auth' && snapshot.drive.recentDecks.length > 0
         ? `Drive resume is available for ${snapshot.drive.recentDecks.length} saved deck${snapshot.drive.recentDecks.length === 1 ? '' : 's'} after reconnect.`
         : snapshot.drive.status === 'error'
@@ -805,9 +816,11 @@ function buildFlashcardStudioResumeHint(snapshot: {
   drive: FlashcardStudioDriveState
 }) {
   const reconnectHint =
-    snapshot.drive.status === 'needs-auth' && snapshot.drive.recentDecks.length > 0
-      ? ` Reconnect Drive to reopen "${snapshot.drive.recentDecks[0]?.deckName}".`
-      : ''
+    snapshot.drive.status === 'expired'
+      ? ' Reconnect Drive to restore saved deck access.'
+      : snapshot.drive.status === 'needs-auth' && snapshot.drive.recentDecks.length > 0
+        ? ` Reconnect Drive to reopen "${snapshot.drive.recentDecks[0]?.deckName}".`
+        : ''
 
   if (snapshot.cardCount === 0) {
     return `Reopen Flashcard Studio to add the first card to "${snapshot.deckTitle}".${reconnectHint}`

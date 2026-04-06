@@ -143,6 +143,22 @@ const manualSmokeTraceDescriptors: Record<
     smokeSupport: 'supported',
     storyId: 'SC-007A',
   },
+  'flashcard-studio-drive-denied': {
+    slug: 'chatbridge-flashcard-studio-drive-denied',
+    primaryFamily: 'reviewed-app-launch',
+    evidenceFamilies: ['auth-resource', 'persistence', 'recovery'],
+    runtimeTarget: MANUAL_SMOKE_RUNTIME_TARGET,
+    smokeSupport: 'supported',
+    storyId: 'SC-007B',
+  },
+  'flashcard-studio-drive-expired': {
+    slug: 'chatbridge-flashcard-studio-drive-expired',
+    primaryFamily: 'reviewed-app-launch',
+    evidenceFamilies: ['auth-resource', 'persistence', 'recovery'],
+    runtimeTarget: MANUAL_SMOKE_RUNTIME_TARGET,
+    smokeSupport: 'supported',
+    storyId: 'SC-007B',
+  },
   'weather-dashboard': {
     slug: 'chatbridge-weather-dashboard',
     primaryFamily: 'reviewed-app-launch',
@@ -193,6 +209,10 @@ export function getChatBridgeManualSmokeFixtureMode(fixtureId: string): ManualSm
               ? 'Supported desktop smoke fixture covering Flashcard Studio study mode, confidence marking, and bounded weak-card continuity.'
               : fixtureId === 'flashcard-studio-drive-resume'
                 ? 'Supported desktop smoke fixture covering the Flashcard Studio Drive reconnect, save or reopen controls, and host-owned resume continuity.'
+                : fixtureId === 'flashcard-studio-drive-denied'
+                  ? 'Supported desktop smoke fixture covering Flashcard Studio Drive consent denial recovery while the local deck remains open.'
+                  : fixtureId === 'flashcard-studio-drive-expired'
+                    ? 'Supported desktop smoke fixture covering Flashcard Studio Drive expired-auth recovery while the local deck remains open.'
               : fixtureId === 'weather-dashboard'
                 ? 'Supported desktop smoke fixture covering the Weather Dashboard launch, refresh path, and host-owned follow-up summary.'
             : fixtureId === 'platform-recovery'

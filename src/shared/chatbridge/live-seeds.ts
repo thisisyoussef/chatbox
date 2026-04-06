@@ -1995,11 +1995,19 @@ export function buildChatBridgeFlashcardStudioStudySessionFixture(): Omit<Sessio
   }
 }
 
-export function buildChatBridgeFlashcardStudioDriveResumeSessionFixture(): Omit<Session, 'id'> {
-  const request = 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.'
+function createSeededFlashcardStudioDriveSnapshot(options: {
+  request: string
+  drive: {
+    status: 'needs-auth' | 'expired'
+    statusText?: string
+    detail?: string
+  }
+  lastUpdatedAt: number
+}) {
   const savedDeckName = 'Biology review.chatbridge-flashcards.json'
-  const snapshot = createFlashcardStudioAppSnapshot({
-    request,
+
+  return createFlashcardStudioAppSnapshot({
+    request: options.request,
     deckTitle: 'Biology review',
     mode: 'study',
     studyStatus: 'studying',
@@ -2028,7 +2036,9 @@ export function buildChatBridgeFlashcardStudioDriveResumeSessionFixture(): Omit<
       { cardId: 'card-2', confidence: 'hard' },
     ],
     drive: {
-      status: 'needs-auth',
+      status: options.drive.status,
+      statusText: options.drive.statusText,
+      detail: options.drive.detail,
       recentDecks: [
         {
           deckId: 'drive-deck-biology-review',
@@ -2042,6 +2052,17 @@ export function buildChatBridgeFlashcardStudioDriveResumeSessionFixture(): Omit<
       lastSavedAt: 1_717_000_100_000,
     },
     lastAction: 'revealed-card',
+    lastUpdatedAt: options.lastUpdatedAt,
+  })
+}
+
+export function buildChatBridgeFlashcardStudioDriveResumeSessionFixture(): Omit<Session, 'id'> {
+  const request = 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.'
+  const snapshot = createSeededFlashcardStudioDriveSnapshot({
+    request,
+    drive: {
+      status: 'needs-auth',
+    },
     lastUpdatedAt: 3,
   })
 
@@ -2058,6 +2079,64 @@ export function buildChatBridgeFlashcardStudioDriveResumeSessionFixture(): Omit<
       ),
       createTextMessage('msg-flashcard-drive-user', 'user', request, 2),
       createFlashcardStudioRuntimeMessage('msg-flashcard-drive-assistant', 3, snapshot),
+    ],
+    chatBridgeAppRecords: createSeededFlashcardStudioAppRecords(snapshot),
+  }
+}
+
+export function buildChatBridgeFlashcardStudioDriveDeniedSessionFixture(): Omit<Session, 'id'> {
+  const request = 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.'
+  const snapshot = createSeededFlashcardStudioDriveSnapshot({
+    request,
+    drive: {
+      status: 'needs-auth',
+      statusText: 'Reconnect Drive to resume',
+      detail: 'Google Drive permission was not granted. Connect Drive when you want to save or reopen decks.',
+    },
+    lastUpdatedAt: 4,
+  })
+
+  return {
+    name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio Drive denied reconnect`,
+    type: 'chat',
+    threadName: 'Flashcard Studio Drive Denied Reconnect',
+    messages: [
+      createTextMessage(
+        'msg-flashcard-drive-denied-system',
+        'system',
+        'Keep Flashcard follow-up grounded in the host-owned Drive recovery state, the local deck summary, and the weak-card prompts instead of raw Drive payloads.',
+        1
+      ),
+      createTextMessage('msg-flashcard-drive-denied-user', 'user', request, 2),
+      createFlashcardStudioRuntimeMessage('msg-flashcard-drive-denied-assistant', 3, snapshot),
+    ],
+    chatBridgeAppRecords: createSeededFlashcardStudioAppRecords(snapshot),
+  }
+}
+
+export function buildChatBridgeFlashcardStudioDriveExpiredSessionFixture(): Omit<Session, 'id'> {
+  const request = 'Open Flashcard Studio and keep saving my biology deck to Drive.'
+  const snapshot = createSeededFlashcardStudioDriveSnapshot({
+    request,
+    drive: {
+      status: 'expired',
+    },
+    lastUpdatedAt: 5,
+  })
+
+  return {
+    name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio Drive expired auth`,
+    type: 'chat',
+    threadName: 'Flashcard Studio Drive Expired Auth',
+    messages: [
+      createTextMessage(
+        'msg-flashcard-drive-expired-system',
+        'system',
+        'Keep Flashcard follow-up grounded in the host-owned expired-auth state, the still-open local deck, and the weak-card prompts instead of raw Drive payloads.',
+        1
+      ),
+      createTextMessage('msg-flashcard-drive-expired-user', 'user', request, 2),
+      createFlashcardStudioRuntimeMessage('msg-flashcard-drive-expired-assistant', 3, snapshot),
     ],
     chatBridgeAppRecords: createSeededFlashcardStudioAppRecords(snapshot),
   }
@@ -2417,6 +2496,60 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
         },
       ],
       sessionInput: buildChatBridgeFlashcardStudioDriveResumeSessionFixture(),
+    },
+    {
+      id: 'flashcard-studio-drive-denied',
+      name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio Drive denied reconnect`,
+      description:
+        'Seeds Flashcard Studio after a Google Drive consent denial so you can confirm the host keeps the deck open locally, preserves resume metadata, and offers a clear reconnect path without collapsing into a generic error shell.',
+      fixtureRole: 'platform-regression',
+      smokeSupport: 'supported',
+      coverage: ['Flashcard Drive denial recovery', 'Local deck continuity', 'Reconnect guidance'],
+      auditSteps: [
+        {
+          action: 'Open the seeded Flashcard Studio Drive denied reconnect session and inspect the host-owned Drive rail above the study card.',
+          expected:
+            'The rail still says `Reconnect Drive to resume`, explains that Google Drive permission was not granted, and keeps the same Biology deck plus study progress visible underneath.',
+        },
+        {
+          action: 'Verify the deck and weak-card context are still present in the inline study shell.',
+          expected:
+            'The current deck remains open locally, the study card still shows the active prompt, and later chat can reference weak-card metadata without assuming Drive access succeeded.',
+        },
+        {
+          action: 'Click `Connect Drive` when you want to retry consent.',
+          expected:
+            'The same host-owned shell handles the reconnect attempt instead of dropping the thread into a detached auth receipt or generic Drive error state.',
+        },
+      ],
+      sessionInput: buildChatBridgeFlashcardStudioDriveDeniedSessionFixture(),
+    },
+    {
+      id: 'flashcard-studio-drive-expired',
+      name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Flashcard Studio Drive expired auth`,
+      description:
+        'Seeds Flashcard Studio after a previously granted Drive connection has expired so you can confirm the host keeps the deck open locally, preserves saved-deck metadata, and asks for reconnect before save or reopen resumes.',
+      fixtureRole: 'platform-regression',
+      smokeSupport: 'supported',
+      coverage: ['Flashcard Drive expired auth recovery', 'Saved deck continuity', 'Reconnect-required shell state'],
+      auditSteps: [
+        {
+          action: 'Open the seeded Flashcard Studio Drive expired auth session and inspect the host-owned Drive rail above the study card.',
+          expected:
+            'The rail says `Reconnect Drive to continue`, explains that authorization expired, and still names the saved Biology deck instead of acting like the deck disappeared.',
+        },
+        {
+          action: 'Verify the study shell still holds the local deck and weak-card context.',
+          expected:
+            'The current card, study counts, and weak-card continuity stay visible even though save or reopen actions remain gated until Drive is reconnected.',
+        },
+        {
+          action: 'Click `Reconnect Drive` when you want to restore Drive access.',
+          expected:
+            'The reconnect attempt happens inside the same host-owned shell, and successful auth re-enables the save or reopen path without losing the local deck state.',
+        },
+      ],
+      sessionInput: buildChatBridgeFlashcardStudioDriveExpiredSessionFixture(),
     },
     {
       id: 'weather-dashboard',

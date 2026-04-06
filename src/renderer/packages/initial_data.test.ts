@@ -14,6 +14,8 @@ describe('chatbridge smoke inspection snapshot', () => {
       'drawing-kit-doodle-dare',
       'flashcard-studio-study-mode',
       'flashcard-studio-drive-resume',
+      'flashcard-studio-drive-denied',
+      'flashcard-studio-drive-expired',
       'weather-dashboard',
       'chess-runtime',
       'runtime-and-route-receipt',
@@ -27,6 +29,8 @@ describe('chatbridge smoke inspection snapshot', () => {
       'drawing-kit-doodle-dare',
       'flashcard-studio-study-mode',
       'flashcard-studio-drive-resume',
+      'flashcard-studio-drive-denied',
+      'flashcard-studio-drive-expired',
       'weather-dashboard',
       'chess-runtime',
       'runtime-and-route-receipt',
@@ -50,6 +54,14 @@ describe('chatbridge smoke inspection snapshot', () => {
       snapshot.presetSessions.find((session) => session.fixtureId === 'flashcard-studio-drive-resume')
     ).toMatchObject({
       fixtureRole: 'active-flagship',
+      smokeSupport: 'supported',
+    })
+    expect(snapshot.presetSessions.find((session) => session.fixtureId === 'flashcard-studio-drive-denied')).toMatchObject({
+      fixtureRole: 'platform-regression',
+      smokeSupport: 'supported',
+    })
+    expect(snapshot.presetSessions.find((session) => session.fixtureId === 'flashcard-studio-drive-expired')).toMatchObject({
+      fixtureRole: 'platform-regression',
       smokeSupport: 'supported',
     })
     expect(snapshot.presetSessions.find((session) => session.fixtureId === 'weather-dashboard')).toMatchObject({

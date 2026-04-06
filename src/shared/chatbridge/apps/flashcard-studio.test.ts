@@ -136,6 +136,42 @@ describe('shared flashcard studio helpers', () => {
     expect(snapshot.summary).not.toContain('It helps the cell produce energy.')
   })
 
+  it('surfaces expired Drive auth as reconnect-required without dropping bounded deck context', () => {
+    const snapshot = createFlashcardStudioAppSnapshot({
+      request: 'Reconnect Drive so I can keep saving my science deck.',
+      deckTitle: 'Science review',
+      cards: [
+        {
+          cardId: 'card-1',
+          prompt: 'What does the mitochondria do?',
+          answer: 'It helps the cell produce energy.',
+        },
+      ],
+      selectedCardId: 'card-1',
+      drive: {
+        status: 'expired',
+        recentDecks: [
+          {
+            deckId: 'drive-deck-science-review',
+            deckName: 'Science review.chatbridge-flashcards.json',
+            modifiedAt: 1_717_000_100_000,
+          },
+        ],
+        lastSavedDeckId: 'drive-deck-science-review',
+        lastSavedDeckName: 'Science review.chatbridge-flashcards.json',
+        lastSavedAt: 1_717_000_100_000,
+      },
+      lastAction: 'updated-card',
+      lastUpdatedAt: 6_000,
+    })
+
+    expect(snapshot.drive.statusText).toBe('Reconnect Drive to continue')
+    expect(snapshot.drive.detail).toContain('Drive authorization expired')
+    expect(snapshot.summary).toContain('Drive auth expired')
+    expect(snapshot.resumeHint).toContain('Reconnect Drive to restore saved deck access.')
+    expect(snapshot.summary).not.toContain('It helps the cell produce energy.')
+  })
+
   it('fails closed when the selected card is missing or ids are duplicated', () => {
     expect(
       parseFlashcardStudioAppSnapshot({

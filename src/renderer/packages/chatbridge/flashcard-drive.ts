@@ -7,6 +7,7 @@ import {
   updateFlashcardStudioAppSnapshot,
   type ChatBridgeAppAuthGrant,
   type FlashcardStudioAppSnapshot,
+  type FlashcardStudioDriveStatus,
   type FlashcardStudioDriveRecentDeck,
 } from '@shared/chatbridge'
 import platform from '@/platform'
@@ -86,6 +87,7 @@ class FlashcardDriveError extends Error {
   code:
     | 'missing-client-id'
     | 'auth-denied'
+    | 'auth-expired'
     | 'drive-error'
     | 'invalid-file'
     | 'missing-deck'
@@ -217,6 +219,24 @@ function getActiveToken(userId: string) {
   return hasActiveToken(userId) ? activeDriveToken?.accessToken ?? null : null
 }
 
+function clearActiveToken(userId: string) {
+  if (activeDriveToken?.userId === userId) {
+    activeDriveToken = null
+  }
+}
+
+function getPersistedGrantStatus(localState: FlashcardStudioDriveLocalState) {
+  if (!localState.grant) {
+    return null
+  }
+
+  if (localState.grant.status === 'expired' || localState.grant.status === 'revoked') {
+    return 'expired' as const
+  }
+
+  return null
+}
+
 function createGrant(localState: FlashcardStudioDriveLocalState): ChatBridgeAppAuthGrant {
   const now = Date.now()
   return ChatBridgeAppAuthGrantSchema.parse({
@@ -239,31 +259,39 @@ function createDeckName(snapshot: FlashcardStudioAppSnapshot) {
 }
 
 function createDriveStateFromLocalState(localState: FlashcardStudioDriveLocalState, options?: {
-  status?: 'needs-auth' | 'connecting' | 'connected' | 'saving' | 'loading' | 'error'
+  status?: FlashcardStudioDriveStatus
   statusText?: string
   detail?: string
 }) {
-  const status = options?.status ?? (hasActiveToken(localState.userId) ? 'connected' : 'needs-auth')
+  const status =
+    options?.status ?? (hasActiveToken(localState.userId) ? 'connected' : getPersistedGrantStatus(localState) ?? 'needs-auth')
+  const latestDeckName = localState.lastSavedDeckName ?? localState.recentDecks[0]?.deckName
 
   return {
     provider: 'google-drive' as const,
     status,
     statusText:
       options?.statusText ??
-      (status === 'connected'
+      (status === 'expired'
+        ? 'Reconnect Drive to continue'
+        : status === 'connected'
         ? 'Drive connected'
         : localState.recentDecks.length > 0
           ? 'Reconnect Drive to resume'
           : 'Drive not connected'),
     detail:
       options?.detail ??
-      (status === 'connected'
-        ? localState.lastSavedDeckName
-          ? `Drive is ready for "${localState.lastSavedDeckName}" and future save or resume actions stay host-owned.`
-          : 'Drive is connected and ready to save this deck.'
-        : localState.recentDecks[0]?.deckName
-          ? `Reconnect Drive to reopen "${localState.recentDecks[0].deckName}" or save new progress from this deck.`
-          : 'Connect Drive to save this deck or reopen a recent one.'),
+      (status === 'expired'
+        ? latestDeckName
+          ? `Drive authorization expired before the host could reopen "${latestDeckName}" or keep it in sync. Reconnect and try again; your current deck is still open locally.`
+          : 'Drive authorization expired before save or resume could continue. Reconnect and try again; your current deck is still open locally.'
+        : status === 'connected'
+          ? localState.lastSavedDeckName
+            ? `Drive is ready for "${localState.lastSavedDeckName}" and future save or resume actions stay host-owned.`
+            : 'Drive is connected and ready to save this deck.'
+          : localState.recentDecks[0]?.deckName
+            ? `Reconnect Drive to reopen "${localState.recentDecks[0].deckName}" or save new progress from this deck.`
+            : 'Connect Drive to save this deck or reopen a recent one.'),
     connectedAs: localState.connectedAs,
     recentDecks: localState.recentDecks,
     lastSavedDeckId: localState.lastSavedDeckId,
@@ -389,6 +417,12 @@ async function fetchDriveJson<T>(accessToken: string, input: {
 
   if (!response.ok) {
     const message = await response.text().catch(() => '')
+    if (response.status === 401 || response.status === 403) {
+      throw new FlashcardDriveError(
+        'auth-expired',
+        'Drive authorization expired before the host could finish this action.'
+      )
+    }
     throw new FlashcardDriveError('drive-error', message || 'Google Drive request failed.')
   }
 
@@ -404,6 +438,12 @@ async function fetchDriveText(accessToken: string, url: string) {
 
   if (!response.ok) {
     const message = await response.text().catch(() => '')
+    if (response.status === 401 || response.status === 403) {
+      throw new FlashcardDriveError(
+        'auth-expired',
+        'Drive authorization expired before the host could finish this action.'
+      )
+    }
     throw new FlashcardDriveError('drive-error', message || 'Google Drive request failed.')
   }
 
@@ -465,6 +505,47 @@ function buildSavedEnvelope(snapshot: FlashcardStudioAppSnapshot, deckId: string
         status: 'connected',
         statusText: 'Drive connected',
       },
+    }),
+  })
+}
+
+function getDriveFailureCode(error: unknown): FlashcardDriveError['code'] | null {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof (error as { code?: unknown }).code === 'string'
+  ) {
+    const code = (error as { code: string }).code
+    if (
+      code === 'missing-client-id' ||
+      code === 'auth-denied' ||
+      code === 'auth-expired' ||
+      code === 'drive-error' ||
+      code === 'invalid-file' ||
+      code === 'missing-deck' ||
+      code === 'needs-auth'
+    ) {
+      return code
+    }
+  }
+
+  return null
+}
+
+async function persistExpiredGrantState(userId: string, localState: FlashcardStudioDriveLocalState) {
+  clearActiveToken(userId)
+
+  if (!localState.grant) {
+    return await writeLocalState(localState)
+  }
+
+  return await writeLocalState({
+    ...localState,
+    grant: ChatBridgeAppAuthGrantSchema.parse({
+      ...localState.grant,
+      status: 'expired',
+      updatedAt: Date.now(),
     }),
   })
 }
@@ -531,14 +612,23 @@ export async function saveFlashcardStudioDriveSnapshot(snapshot: FlashcardStudio
   }
   const multipart = createMultipartBody(metadata, JSON.stringify(envelope))
 
-  const response = await fetchDriveJson<GoogleDriveFileMetadata>(accessToken, {
-    url: existingDeckId
-      ? `https://www.googleapis.com/upload/drive/v3/files/${existingDeckId}?uploadType=multipart&fields=id,name,modifiedTime`
-      : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime',
-    method: existingDeckId ? 'PATCH' : 'POST',
-    body: multipart.body,
-    contentType: multipart.contentType,
-  })
+  let response: GoogleDriveFileMetadata
+
+  try {
+    response = await fetchDriveJson<GoogleDriveFileMetadata>(accessToken, {
+      url: existingDeckId
+        ? `https://www.googleapis.com/upload/drive/v3/files/${existingDeckId}?uploadType=multipart&fields=id,name,modifiedTime`
+        : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime',
+      method: existingDeckId ? 'PATCH' : 'POST',
+      body: multipart.body,
+      contentType: multipart.contentType,
+    })
+  } catch (error) {
+    if (getDriveFailureCode(error) === 'auth-expired') {
+      await persistExpiredGrantState(userId, localState)
+    }
+    throw error
+  }
 
   const modifiedAt = Date.parse(response.modifiedTime) || Date.now()
   const connectedAs = await fetchConnectedAccount(accessToken)
@@ -576,7 +666,16 @@ export async function loadFlashcardStudioDriveSnapshot(deckId: string, currentSn
   }
 
   const accessToken = await ensureAccessToken(userId, localState)
-  const rawContent = await fetchDriveText(accessToken, `https://www.googleapis.com/drive/v3/files/${deckId}?alt=media`)
+  let rawContent: string
+
+  try {
+    rawContent = await fetchDriveText(accessToken, `https://www.googleapis.com/drive/v3/files/${deckId}?alt=media`)
+  } catch (error) {
+    if (getDriveFailureCode(error) === 'auth-expired') {
+      await persistExpiredGrantState(userId, localState)
+    }
+    throw error
+  }
   let parsedContent: unknown
 
   try {
@@ -622,16 +721,72 @@ export function getFlashcardDriveErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Flashcard Drive action failed.'
 }
 
+export function getFlashcardDriveFailureState(snapshot: FlashcardStudioAppSnapshot, error: unknown) {
+  const code = getDriveFailureCode(error)
+  const latestDeckName = snapshot.drive.lastSavedDeckName ?? snapshot.drive.recentDecks[0]?.deckName
+  const detail = getFlashcardDriveErrorMessage(error)
+
+  if (code === 'auth-expired') {
+    return {
+      status: 'expired' as const,
+      statusText: 'Reconnect Drive to continue',
+      detail: latestDeckName
+        ? `Drive authorization expired before the host could reopen "${latestDeckName}" or keep it in sync. Reconnect and try again; your current deck is still open locally.`
+        : 'Drive authorization expired before the host could finish this action. Reconnect and try again; your current deck is still open locally.',
+    }
+  }
+
+  if (code === 'auth-denied' || code === 'needs-auth') {
+    return {
+      status: 'needs-auth' as const,
+      statusText: snapshot.drive.recentDecks.length > 0 ? 'Reconnect Drive to resume' : 'Drive not connected',
+      detail:
+        detail === 'Google Drive permission was not granted.'
+          ? 'Google Drive permission was not granted. Connect Drive when you want to save or reopen decks.'
+          : detail,
+    }
+  }
+
+  if (code === 'missing-client-id') {
+    return {
+      status: 'error' as const,
+      statusText: 'Drive unavailable',
+      detail,
+    }
+  }
+
+  return {
+    status: 'error' as const,
+    statusText: 'Drive action blocked',
+    detail,
+  }
+}
+
 export function createFlashcardDriveErrorSnapshot(
   snapshot: FlashcardStudioAppSnapshot,
-  detail: string
+  input:
+    | string
+    | {
+        status: 'needs-auth' | 'expired' | 'error'
+        statusText: string
+        detail: string
+      }
 ) {
+  const nextDriveState =
+    typeof input === 'string'
+      ? {
+          status: 'error' as const,
+          statusText: 'Drive action blocked',
+          detail: input,
+        }
+      : input
+
   return updateFlashcardStudioAppSnapshot(snapshot, {
     drive: {
       ...snapshot.drive,
-      status: 'error',
-      statusText: 'Drive action blocked',
-      detail,
+      status: nextDriveState.status,
+      statusText: nextDriveState.statusText,
+      detail: nextDriveState.detail,
     },
     lastUpdatedAt: Date.now(),
   })
