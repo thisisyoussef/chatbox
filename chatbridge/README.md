@@ -1,21 +1,36 @@
-# ChatBridge Brief
+# ChatBridge Brief and Docs Index
 
-This folder captures the Week 7 ChatBridge case study and a working interpretation of what it means for this codebase.
+This folder captures the Week 7 ChatBridge case study and the current
+ChatBridge contract for this codebase. Use it both as the product brief and as
+the entry point for reviewed-partner developer docs.
 
 Files:
-- `README.md`: distilled product and engineering brief
+- `README.md`: distilled product and engineering brief plus docs index
 - `SUBMISSION.md`: reviewer-facing submission entry point and graded-scenario checklist
 - `BOOTSTRAP.md`: Pack 0 bootstrap, env, and setup contract
 - `DEPLOYMENT.md`: Pack 0 deployment and infrastructure baseline
 - `SERVICE_TOPOLOGY.md`: Pack 0 runtime, service, and deployment boundary map
 - `INTEGRATION_HARNESS.md`: Pack 0 fixture and mock-harness strategy
 - `EVALS_AND_OBSERVABILITY.md`: Pack 0 eval, trace, and observability baseline
-- `ARCHITECTURE.md`: presentation-friendly target architecture
+- `PARTNER_SETUP.md`: reviewed-partner local setup and quickstart path
+- `PARTNER_API.md`: reviewed-partner manifest, bridge lifecycle, auth, and completion contract
 - `PARTNER_SDK.md`: Pack 07 reviewed-partner validator and local harness guide
+- `ARCHITECTURE.md`: presentation-friendly target architecture
+- `PRESEARCH.md`: longer-form rationale for the reviewed-partner platform model
+- `../test/integration/chatbridge/edd/README.md`: local-first EDD harness and scenario inventory
 - `../docs/specs/CHATBRIDGE-000-program-roadmap/`: phased implementation packs
 
 If the original assignment PDF is kept locally, treat it as a supplemental
 reference rather than a required checked-in repo artifact.
+
+## Start Here
+
+- `PARTNER_SETUP.md` for repo commands and local onboarding
+- `PARTNER_API.md` for the current reviewed-partner contract
+- `ARCHITECTURE.md` for trust boundaries and state ownership
+- `PRESEARCH.md` for the longer-form platform framing
+- `EVALS_AND_OBSERVABILITY.md` and `../test/integration/chatbridge/edd/README.md`
+  for the local-first EDD and observability path
 
 ## What The Project Is
 
