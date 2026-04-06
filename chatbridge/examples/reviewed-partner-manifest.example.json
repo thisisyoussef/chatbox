@@ -60,7 +60,7 @@
       "reviewed": true,
       "sandbox": "hosted-iframe",
       "handlesStudentData": true,
-      "requiresTeacherApproval": true
+      "requiresTeacherApproval": false
     },
     "launchSurfaces": {
       "desktop-electron": {
@@ -71,10 +71,8 @@
       }
     },
     "tenantAvailability": {
-      "default": "disabled",
-      "allow": [
-        "tenant:k12-demo"
-      ],
+      "default": "enabled",
+      "allow": [],
       "deny": []
     },
     "healthcheck": {

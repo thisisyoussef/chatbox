@@ -14,6 +14,7 @@ review.
 - host-managed auth expectations for reviewed apps
 - explicit completion signaling and host-owned summary rules
 - a local mock harness for partner-runtime conformance tests
+- a self-serve intake portal for manifest upload, review, and catalog ingest
 
 Authoritative repo surfaces:
 
@@ -21,6 +22,9 @@ Authoritative repo surfaces:
 - `test/integration/chatbridge/mocks/partner-harness.ts`
 - `test/integration/chatbridge/scenarios/partner-sdk-harness.test.ts`
 - `chatbridge/examples/reviewed-partner-manifest.example.json`
+- `chatbridge/examples/reviewed-partner-runtime.example.html`
+- `src/renderer/components/settings/chatbridge/PartnerPortal.tsx`
+- `src/renderer/packages/chatbridge/partner-submissions.ts`
 
 ## Quickstart
 
@@ -37,6 +41,8 @@ This is the shortest safe path for a new reviewed partner app developer:
    `app.complete`.
 7. If your app needs OAuth or API-key access, add `app.requestAuth` and keep
    credentials host-owned.
+8. Use the self-serve intake portal when you want to test upload, review, and
+   approval inside the product shell.
 
 If you want one working reference before adapting anything, start here:
 
@@ -61,6 +67,47 @@ Use it as the baseline for:
 - required lifecycle events
 - launch surfaces and tenant availability
 - reviewed approval metadata
+
+## Minimal HTML Runtime Example
+
+The checked-in example runtime package lives at:
+
+- `chatbridge/examples/reviewed-partner-runtime.example.html`
+
+It is a single-file reviewed runtime that:
+
+- accepts `host.bootstrap`
+- acknowledges with `app.ready`
+- emits resumable `app.state` snapshots
+- completes with `app.complete`
+
+This is the easiest format to test through the new intake portal because it
+can be uploaded directly without any extra bundling.
+
+## Self-Serve Intake Portal
+
+The product now includes a host-owned intake and review surface at:
+
+- `Settings -> ChatBridge Partners`
+
+That portal lets a developer or reviewer:
+
+1. paste a reviewed manifest JSON payload
+2. optionally upload a single-file HTML runtime package
+3. validate the manifest against the current host contract
+4. submit it into the local review queue
+5. approve or reject it from the same shell
+6. hydrate approved apps into the reviewed catalog immediately
+
+For the current submission build, this is intentionally local and host-owned.
+There is no separate marketplace backend, but the full reviewed flow now exists
+inside the app:
+
+- submission persistence
+- review queue
+- approval and rejection
+- catalog ingest
+- uploaded runtime lookup at launch time
 
 If your app later needs host-managed OAuth or API-key access, keep the same
 shape and add the auth-mode delta documented below.
@@ -235,6 +282,7 @@ harness.sendAppEvent({
 The working end-to-end reference for this path is:
 
 - `test/integration/chatbridge/scenarios/partner-sdk-harness.test.ts`
+- `test/integration/chatbridge/scenarios/partner-submission-intake.test.ts`
 
 ## Launch-Scoped Bridge Rules
 
