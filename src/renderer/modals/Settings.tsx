@@ -20,6 +20,7 @@ import useNeedRoomForWinControls from '@/hooks/useNeedRoomForWinControls'
 import { router } from '@/router'
 import { RouteComponent as SettingsChatRouteComponent } from '@/routes/settings/chat'
 import { RouteComponent as SettingsChatboxAiRouteComponent } from '@/routes/settings/chatbox-ai'
+import { RouteComponent as SettingsChatBridgePartnersRouteComponent } from '@/routes/settings/chatbridge-partners'
 import { RouteComponent as SettingsDefaultModelsRouteComponent } from '@/routes/settings/default-models'
 import { RouteComponent as SettingsDocumentParserRouteComponent } from '@/routes/settings/document-parser'
 import { RouteComponent as SettingsGeneralRouteComponent } from '@/routes/settings/general'
@@ -181,6 +182,12 @@ const SettingsDocumentParserRoute = createRoute({
   getParentRoute: () => RootRoute,
 })
 
+const SettingsChatBridgePartnersRoute = createRoute({
+  component: SettingsChatBridgePartnersRouteComponent,
+  path: '/settings/chatbridge-partners',
+  getParentRoute: () => RootRoute,
+})
+
 const SettingsHotkeysRoute = createRoute({
   component: SettingsHotkeysRouteComponent,
   path: '/settings/hotkeys',
@@ -232,6 +239,7 @@ const routeTree = RootRoute.addChildren([
   SettingsMcpRoute,
   SettingsKnowledgeBaseRoute,
   SettingsDocumentParserRoute,
+  SettingsChatBridgePartnersRoute,
   SettingsHotkeysRoute,
   SettingsDefaultModelsRoute,
   SettingsProviderRouteRoute,
@@ -240,9 +248,13 @@ const routeTree = RootRoute.addChildren([
 const settingsModalHistory = createMemoryHistory()
 
 // memoryHistory.location.href = '/about'
-const modalRouter = createRouter({
-  routeTree,
-  history: settingsModalHistory,
-  defaultPreload: 'intent',
-  scrollRestoration: true,
-})
+export function createSettingsModalRouter(history = createMemoryHistory()) {
+  return createRouter({
+    routeTree,
+    history,
+    defaultPreload: 'intent',
+    scrollRestoration: true,
+  })
+}
+
+const modalRouter = createSettingsModalRouter(settingsModalHistory)
