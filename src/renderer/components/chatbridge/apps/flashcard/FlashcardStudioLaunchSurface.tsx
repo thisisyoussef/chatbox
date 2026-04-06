@@ -11,6 +11,7 @@ import {
   connectFlashcardStudioDrive,
   createFlashcardDriveErrorSnapshot,
   getFlashcardDriveErrorMessage,
+  getFlashcardDriveFailureState,
   hydrateFlashcardStudioDriveSnapshot,
   loadFlashcardStudioDriveSnapshot,
   saveFlashcardStudioDriveSnapshot,
@@ -124,7 +125,8 @@ export function FlashcardStudioLaunchSurface({
           return
         }
 
-        const errorSnapshot = createFlashcardDriveErrorSnapshot(parsedSnapshot, getFlashcardDriveErrorMessage(error))
+        const failureState = getFlashcardDriveFailureState(parsedSnapshot, error)
+        const errorSnapshot = createFlashcardDriveErrorSnapshot(parsedSnapshot, failureState)
         setSnapshot(errorSnapshot)
       }
     })()
@@ -190,12 +192,19 @@ export function FlashcardStudioLaunchSurface({
       }).catch(() => undefined)
     } catch (error) {
       const detail = getFlashcardDriveErrorMessage(error)
-      const errorSnapshot = createFlashcardDriveErrorSnapshot(baseSnapshot, detail)
+      const failureState = getFlashcardDriveFailureState(baseSnapshot, error)
+      const errorSnapshot = createFlashcardDriveErrorSnapshot(baseSnapshot, failureState)
       setSnapshot(errorSnapshot)
       await persistHostSnapshot(errorSnapshot, {
         payload: {
           action: `drive.${action}`,
-          outcome: 'error',
+          outcome:
+            failureState.status === 'expired'
+              ? 'expired'
+              : failureState.status === 'needs-auth' &&
+                  detail === 'Google Drive permission was not granted.'
+                ? 'denied'
+                : 'error',
           detail,
         },
       }).catch(() => undefined)
@@ -207,7 +216,8 @@ export function FlashcardStudioLaunchSurface({
   const hasRecentDecks = snapshot.drive.recentDecks.length > 0
   const canSave = busyAction === null && snapshot.cardCount > 0 && snapshot.drive.status === 'connected'
   const canLoad = busyAction === null && hasRecentDecks && snapshot.drive.status === 'connected'
-  const connectLabel = snapshot.drive.status === 'connected' ? 'Reconnect Drive' : 'Connect Drive'
+  const connectLabel =
+    snapshot.drive.status === 'connected' || snapshot.drive.status === 'expired' ? 'Reconnect Drive' : 'Connect Drive'
 
   return (
     <div

@@ -29,6 +29,7 @@ vi.mock('@/variables', () => ({
 
 import {
   createFlashcardDriveErrorSnapshot,
+  getFlashcardDriveFailureState,
   getFlashcardDriveErrorMessage,
   hydrateFlashcardStudioDriveSnapshot,
 } from './flashcard-drive'
@@ -122,5 +123,110 @@ describe('flashcard Drive helpers', () => {
     })
     expect(errored.cardCount).toBe(1)
     expect(getFlashcardDriveErrorMessage(new Error('Example failure'))).toBe('Example failure')
+  })
+
+  it('hydrates an expired persisted grant into an explicit reconnect-required Drive state', async () => {
+    store.set('chatbridge:flashcard-studio:drive:stable-user-1', {
+      schemaVersion: 1,
+      userId: 'stable-user-1',
+      appId: 'flashcard-studio',
+      grant: {
+        schemaVersion: 1,
+        grantId: 'grant-1',
+        userId: 'stable-user-1',
+        appId: 'flashcard-studio',
+        authMode: 'oauth',
+        permissionIds: ['drive.read', 'drive.write'],
+        credentialHandle: 'flashcard-drive-grant:grant-1',
+        status: 'expired',
+        createdAt: 1_000,
+        updatedAt: 2_000,
+      },
+      recentDecks: [
+        {
+          deckId: 'drive-deck-biology-review',
+          deckName: 'Biology review.chatbridge-flashcards.json',
+          modifiedAt: 1_717_000_100_000,
+        },
+      ],
+      lastSavedDeckId: 'drive-deck-biology-review',
+      lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+      lastSavedAt: 1_717_000_100_000,
+      updatedAt: 2_000,
+    })
+
+    const snapshot = createFlashcardStudioAppSnapshot({
+      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+      deckTitle: 'Biology review',
+      cards: [
+        {
+          cardId: 'card-1',
+          prompt: 'What does the mitochondria do?',
+          answer: 'It helps the cell produce energy.',
+        },
+      ],
+      selectedCardId: 'card-1',
+      lastAction: 'updated-card',
+      lastUpdatedAt: 2_000,
+    })
+
+    const hydrated = await hydrateFlashcardStudioDriveSnapshot(snapshot)
+
+    expect(hydrated.drive).toMatchObject({
+      status: 'expired',
+      statusText: 'Reconnect Drive to continue',
+      lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+    })
+    expect(hydrated.drive.detail).toContain('Drive authorization expired')
+  })
+
+  it('classifies denied and expired Drive auth failures into reconnect-friendly shell states', () => {
+    const snapshot = createFlashcardStudioAppSnapshot({
+      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+      deckTitle: 'Biology review',
+      cards: [
+        {
+          cardId: 'card-1',
+          prompt: 'What does the mitochondria do?',
+          answer: 'It helps the cell produce energy.',
+        },
+      ],
+      selectedCardId: 'card-1',
+      drive: {
+        status: 'needs-auth',
+        recentDecks: [
+          {
+            deckId: 'drive-deck-biology-review',
+            deckName: 'Biology review.chatbridge-flashcards.json',
+            modifiedAt: 1_717_000_100_000,
+          },
+        ],
+        lastSavedDeckId: 'drive-deck-biology-review',
+        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        lastSavedAt: 1_717_000_100_000,
+      },
+      lastAction: 'updated-card',
+      lastUpdatedAt: 2_000,
+    })
+
+    expect(
+      getFlashcardDriveFailureState(snapshot, {
+        code: 'auth-denied',
+        message: 'Google Drive permission was not granted.',
+      })
+    ).toMatchObject({
+      status: 'needs-auth',
+      statusText: 'Reconnect Drive to resume',
+    })
+
+    expect(
+      getFlashcardDriveFailureState(snapshot, {
+        code: 'auth-expired',
+        message: 'Drive authorization expired before this action completed.',
+      })
+    ).toMatchObject({
+      status: 'expired',
+      statusText: 'Reconnect Drive to continue',
+    })
   })
 })

@@ -17,15 +17,29 @@ const mocks = vi.hoisted(() => ({
   connectFlashcardStudioDrive: vi.fn(),
   saveFlashcardStudioDriveSnapshot: vi.fn(),
   loadFlashcardStudioDriveSnapshot: vi.fn(),
-  createFlashcardDriveErrorSnapshot: vi.fn((snapshot: ReturnType<typeof createFlashcardStudioAppSnapshot>, detail: string) =>
-    updateFlashcardStudioAppSnapshot(snapshot, {
-      drive: {
-        ...snapshot.drive,
-        status: 'error',
-        statusText: 'Drive action blocked',
-        detail,
-      },
-      lastUpdatedAt: snapshot.lastUpdatedAt + 1,
+  createFlashcardDriveErrorSnapshot: vi.fn(
+    (
+      snapshot: ReturnType<typeof createFlashcardStudioAppSnapshot>,
+      input: string | { status: 'needs-auth' | 'expired' | 'error'; statusText: string; detail: string }
+    ) =>
+      updateFlashcardStudioAppSnapshot(snapshot, {
+        drive: {
+          ...snapshot.drive,
+          status: typeof input === 'string' ? 'error' : input.status,
+          statusText: typeof input === 'string' ? 'Drive action blocked' : input.statusText,
+          detail: typeof input === 'string' ? input : input.detail,
+        },
+        lastUpdatedAt: snapshot.lastUpdatedAt + 1,
+      })
+  ),
+  getFlashcardDriveFailureState: vi.fn(
+    (
+      snapshot: ReturnType<typeof createFlashcardStudioAppSnapshot>,
+      error: unknown
+    ): { status: 'needs-auth' | 'expired' | 'error'; statusText: string; detail: string } => ({
+      status: 'error',
+      statusText: 'Drive action blocked',
+      detail: error instanceof Error ? error.message : 'Drive failed.',
     })
   ),
   getFlashcardDriveErrorMessage: vi.fn((error: unknown) => (error instanceof Error ? error.message : 'Drive failed.')),
@@ -38,6 +52,7 @@ vi.mock('@/packages/chatbridge/flashcard-drive', () => ({
   saveFlashcardStudioDriveSnapshot: mocks.saveFlashcardStudioDriveSnapshot,
   loadFlashcardStudioDriveSnapshot: mocks.loadFlashcardStudioDriveSnapshot,
   createFlashcardDriveErrorSnapshot: mocks.createFlashcardDriveErrorSnapshot,
+  getFlashcardDriveFailureState: mocks.getFlashcardDriveFailureState,
   getFlashcardDriveErrorMessage: mocks.getFlashcardDriveErrorMessage,
 }))
 
@@ -286,5 +301,76 @@ describe('FlashcardStudioLaunchSurface', () => {
     expect(persistedKinds).toContain('auth.requested')
     expect(persistedKinds).toContain('auth.linked')
     expect(persistedKinds.filter((kind) => kind === 'state.updated').length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('keeps expired Drive auth explicit when a save fails after a prior connection', async () => {
+    const baseSnapshot = createBaseSnapshot()
+    const hydratedSnapshot = updateFlashcardStudioAppSnapshot(baseSnapshot, {
+      drive: {
+        status: 'connected',
+        statusText: 'Drive connected',
+        detail: 'Drive is connected and ready to save this deck.',
+        connectedAs: 'student@example.com',
+        recentDecks: [
+          {
+            deckId: 'drive-deck-biology-review',
+            deckName: 'Biology review.chatbridge-flashcards.json',
+            modifiedAt: 1_717_000_100_000,
+          },
+        ],
+        lastSavedDeckId: 'drive-deck-biology-review',
+        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        lastSavedAt: 1_717_000_100_000,
+      },
+      lastUpdatedAt: baseSnapshot.lastUpdatedAt,
+    })
+
+    mocks.hydrateFlashcardStudioDriveSnapshot.mockResolvedValue(hydratedSnapshot)
+    mocks.saveFlashcardStudioDriveSnapshot.mockRejectedValue(
+      Object.assign(new Error('Drive authorization expired before the host could finish this action.'), {
+        code: 'auth-expired',
+      })
+    )
+    mocks.getFlashcardDriveFailureState.mockReturnValue({
+      status: 'expired',
+      statusText: 'Reconnect Drive to continue',
+      detail:
+        'Drive authorization expired before the host could reopen "Biology review.chatbridge-flashcards.json" or keep it in sync. Reconnect and try again; your current deck is still open locally.',
+    })
+
+    const { findByText, getByRole } = render(
+      <MantineProvider>
+        <FlashcardStudioLaunchSurface
+          part={createPart(baseSnapshot)}
+          launch={createLaunch()}
+          sessionId="session-reviewed-launch-flashcard-drive-1"
+          messageId="assistant-reviewed-launch-flashcard-drive-1"
+        />
+      </MantineProvider>
+    )
+
+    await findByText('Drive connected')
+    fireEvent.click(getByRole('button', { name: 'Save deck' }))
+
+    await findByText('Reconnect Drive to continue')
+    expect(mocks.getFlashcardDriveFailureState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deckTitle: 'Biology review',
+      }),
+      expect.objectContaining({
+        code: 'auth-expired',
+      })
+    )
+    await waitFor(() => {
+      expect(mocks.persistReviewedAppLaunchHostSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            action: 'drive.save',
+            outcome: 'expired',
+            detail: 'Drive authorization expired before the host could finish this action.',
+          }),
+        })
+      )
+    })
   })
 })

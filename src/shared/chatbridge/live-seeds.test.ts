@@ -4,6 +4,8 @@ import {
   buildChatBridgeChessMidGameSessionFixture,
   buildChatBridgeDegradedCompletionRecoverySessionFixture,
   buildChatBridgeDrawingKitDoodleDareSessionFixture,
+  buildChatBridgeFlashcardStudioDriveDeniedSessionFixture,
+  buildChatBridgeFlashcardStudioDriveExpiredSessionFixture,
   buildChatBridgeFlashcardStudioDriveResumeSessionFixture,
   buildChatBridgeFlashcardStudioStudySessionFixture,
   buildChatBridgeWeatherDashboardSessionFixture,
@@ -202,6 +204,52 @@ describe('chatbridge live seed fixtures', () => {
     expect(fixture.chatBridgeAppRecords?.events).toHaveLength(2)
   })
 
+  it('builds a Flashcard Studio Drive denied reconnect fixture that keeps the local deck open', () => {
+    const fixture = buildChatBridgeFlashcardStudioDriveDeniedSessionFixture()
+    const assistantMessage = fixture.messages.find((message) => message.id === 'msg-flashcard-drive-denied-assistant')
+    const appPart = assistantMessage?.contentParts.find((part) => part.type === 'app')
+
+    expect(appPart && appPart.type === 'app' ? appPart.appId : undefined).toBe('flashcard-studio')
+    expect(appPart && appPart.type === 'app' ? appPart.lifecycle : undefined).toBe('ready')
+    expect(appPart && appPart.type === 'app' ? appPart.snapshot : undefined).toMatchObject({
+      mode: 'study',
+      drive: {
+        status: 'needs-auth',
+        statusText: 'Reconnect Drive to resume',
+        detail: 'Google Drive permission was not granted. Connect Drive when you want to save or reopen decks.',
+        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+      },
+    })
+    expect(fixture.chatBridgeAppRecords?.instances[0]).toMatchObject({
+      appId: 'flashcard-studio',
+      status: 'ready',
+    })
+  })
+
+  it('builds a Flashcard Studio Drive expired auth fixture that keeps reconnect-required state explicit', () => {
+    const fixture = buildChatBridgeFlashcardStudioDriveExpiredSessionFixture()
+    const assistantMessage = fixture.messages.find((message) => message.id === 'msg-flashcard-drive-expired-assistant')
+    const appPart = assistantMessage?.contentParts.find((part) => part.type === 'app')
+
+    expect(appPart && appPart.type === 'app' ? appPart.appId : undefined).toBe('flashcard-studio')
+    expect(appPart && appPart.type === 'app' ? appPart.lifecycle : undefined).toBe('ready')
+    expect(appPart && appPart.type === 'app' ? appPart.snapshot : undefined).toMatchObject({
+      mode: 'study',
+      drive: {
+        status: 'expired',
+        statusText: 'Reconnect Drive to continue',
+        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+      },
+    })
+    expect((appPart && appPart.type === 'app' ? appPart.snapshot : undefined) as { resumeHint?: string }).toMatchObject({
+      resumeHint: expect.stringContaining('Reconnect Drive to restore saved deck access.'),
+    })
+    expect(fixture.chatBridgeAppRecords?.instances[0]).toMatchObject({
+      appId: 'flashcard-studio',
+      status: 'ready',
+    })
+  })
+
   it('builds a Weather Dashboard fixture with a ready reviewed launch surface and restartable continuity', () => {
     const fixture = buildChatBridgeWeatherDashboardSessionFixture()
     const assistantMessage = fixture.messages.find((message) => message.id === 'msg-weather-assistant')
@@ -234,6 +282,8 @@ describe('chatbridge live seed fixtures', () => {
       'drawing-kit-doodle-dare',
       'flashcard-studio-study-mode',
       'flashcard-studio-drive-resume',
+      'flashcard-studio-drive-denied',
+      'flashcard-studio-drive-expired',
       'weather-dashboard',
       'chess-runtime',
       'runtime-and-route-receipt',
@@ -249,6 +299,14 @@ describe('chatbridge live seed fixtures', () => {
     })
     expect(fixtures.find((fixture) => fixture.id === 'flashcard-studio-drive-resume')).toMatchObject({
       fixtureRole: 'active-flagship',
+      smokeSupport: 'supported',
+    })
+    expect(fixtures.find((fixture) => fixture.id === 'flashcard-studio-drive-denied')).toMatchObject({
+      fixtureRole: 'platform-regression',
+      smokeSupport: 'supported',
+    })
+    expect(fixtures.find((fixture) => fixture.id === 'flashcard-studio-drive-expired')).toMatchObject({
+      fixtureRole: 'platform-regression',
       smokeSupport: 'supported',
     })
     expect(fixtures.find((fixture) => fixture.id === 'weather-dashboard')).toMatchObject({
