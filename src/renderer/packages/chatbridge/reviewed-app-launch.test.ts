@@ -237,7 +237,7 @@ function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
     toolCallId: 'tool-reviewed-launch-flashcard-drive-1',
     toolName: 'flashcard_studio_open',
     args: {
-      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+      request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
     },
     result: {
       kind: 'chatbridge.host.tool.record.v1',
@@ -250,7 +250,7 @@ function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
       retryClassification: 'safe',
       invocation: {
         args: {
-          request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+          request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
         },
       },
       outcome: {
@@ -260,8 +260,8 @@ function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
           appName: 'Flashcard Studio',
           capability: 'open',
           launchReady: true,
-          summary: 'Prepared the reviewed Flashcard Studio Drive resume request for the host-owned launch path.',
-          request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+          summary: 'Prepared the reviewed Flashcard Studio Google Sheets resume request for the host-owned launch path.',
+          request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
         },
       },
     },
@@ -919,7 +919,7 @@ describe('reviewed app launch adoption', () => {
     )
   })
 
-  it('records host-authored Flashcard Drive snapshots without requiring the reviewed runtime bridge token', () => {
+  it('records host-authored Flashcard Google Sheets snapshots without requiring the reviewed runtime bridge token', () => {
     const assistantMessage = createMessage('assistant')
     assistantMessage.id = 'assistant-reviewed-launch-flashcard-drive-1'
     assistantMessage.contentParts = upsertReviewedAppLaunchParts([createFlashcardStudioLaunchToolCallPart()])
@@ -931,7 +931,7 @@ describe('reviewed app launch adoption', () => {
 
     const session: Session = {
       id: 'session-reviewed-launch-flashcard-drive-1',
-      name: 'Reviewed Flashcard Drive launch session',
+      name: 'Reviewed Flashcard Google Sheets launch session',
       messages: [assistantMessage],
       settings: {},
     }
@@ -945,7 +945,7 @@ describe('reviewed app launch adoption', () => {
     })
 
     const reconnectSnapshot = createFlashcardStudioAppSnapshot({
-      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+      request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
       deckTitle: 'Biology review',
       cards: [
         {
@@ -957,12 +957,12 @@ describe('reviewed app launch adoption', () => {
       selectedCardId: 'card-1',
       drive: {
         status: 'connecting',
-        statusText: 'Connecting Drive',
-        detail: 'Waiting for Google Drive permission so the host can save and reopen this deck.',
+        statusText: 'Connecting Google Sheets',
+        detail: 'Waiting for Google Sheets permission so the host can open or save this workbook.',
         recentDecks: [
           {
             deckId: 'drive-deck-biology-review',
-            deckName: 'Biology review.chatbridge-flashcards.json',
+            deckName: 'Biology review flashcards',
             modifiedAt: 1_717_000_100_000,
           },
         ],
@@ -977,7 +977,7 @@ describe('reviewed app launch adoption', () => {
       snapshot: reconnectSnapshot,
       eventKind: 'auth.requested',
       payload: {
-        action: 'drive.connect',
+        action: 'sheets.connect',
       },
       summaryForModel: reconnectSnapshot.summary,
       now: () => 41_000,
@@ -990,7 +990,7 @@ describe('reviewed app launch adoption', () => {
       snapshot: {
         drive: {
           status: 'connecting',
-          statusText: 'Connecting Drive',
+          statusText: 'Connecting Google Sheets',
         },
       },
     })
@@ -1001,18 +1001,18 @@ describe('reviewed app launch adoption', () => {
     ])
 
     const connectedSnapshot = createFlashcardStudioAppSnapshot({
-      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+      request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
       deckTitle: 'Biology review',
       cards: reconnectSnapshot.cards,
       selectedCardId: 'card-1',
       drive: {
         status: 'connected',
-        statusText: 'Drive connected',
-        detail: 'Loaded "Biology review.chatbridge-flashcards.json" from the saved Drive deck list.',
+        statusText: 'Google Sheets connected',
+        detail: 'Loaded "Biology review flashcards" from the saved Google Sheets list.',
         connectedAs: 'student@example.com',
         recentDecks: reconnectSnapshot.drive.recentDecks,
         lastSavedDeckId: 'drive-deck-biology-review',
-        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        lastSavedDeckName: 'Biology review flashcards',
         lastSavedAt: 1_717_000_300_000,
       },
       lastAction: 'updated-card',
@@ -1025,7 +1025,7 @@ describe('reviewed app launch adoption', () => {
       snapshot: connectedSnapshot,
       eventKind: 'auth.linked',
       payload: {
-        action: 'drive.connect',
+        action: 'sheets.connect',
         outcome: 'success',
       },
       summaryForModel: connectedSnapshot.summary,
@@ -1039,8 +1039,8 @@ describe('reviewed app launch adoption', () => {
       snapshot: {
         drive: {
           status: 'connected',
-          statusText: 'Drive connected',
-          lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+          statusText: 'Google Sheets connected',
+          lastSavedDeckName: 'Biology review flashcards',
         },
       },
     })

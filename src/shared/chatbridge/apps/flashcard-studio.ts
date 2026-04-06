@@ -129,8 +129,8 @@ export const FlashcardStudioAppSnapshotSchema = z
     drive: FlashcardStudioDriveStateSchema.default({
       provider: 'google-drive',
       status: 'needs-auth',
-      statusText: 'Drive not connected',
-      detail: 'Connect Drive to save this deck or reopen a recent one.',
+      statusText: 'Google Sheets not connected',
+      detail: 'Connect Google Sheets to continue with Flashcard Studio or reopen a saved sheet.',
       recentDecks: [],
     }),
     lastAction: FlashcardStudioAuthoringActionSchema,
@@ -420,20 +420,20 @@ function buildFlashcardStudioDriveStatusText(input: {
 }) {
   switch (input.status) {
     case 'expired':
-      return 'Reconnect Drive to continue'
+      return 'Reconnect Google Sheets to continue'
     case 'connecting':
-      return 'Connecting Drive'
+      return 'Connecting Google Sheets'
     case 'connected':
-      return 'Drive connected'
+      return 'Google Sheets connected'
     case 'saving':
-      return 'Saving to Drive'
+      return 'Saving to Google Sheets'
     case 'loading':
-      return 'Loading from Drive'
+      return 'Loading from Google Sheets'
     case 'error':
-      return 'Drive action blocked'
+      return 'Google Sheets action blocked'
     case 'needs-auth':
     default:
-      return input.recentDecks.length > 0 ? 'Reconnect Drive to resume' : 'Drive not connected'
+      return input.recentDecks.length > 0 ? 'Reconnect Google Sheets to resume' : 'Google Sheets not connected'
   }
 }
 
@@ -449,33 +449,33 @@ function buildFlashcardStudioDriveDetail(input: {
   switch (input.status) {
     case 'expired':
       return latestDeckName
-        ? `Drive authorization expired before the host could reopen "${latestDeckName}" or keep it in sync. Reconnect and try again; your current deck is still open locally.`
-        : 'Drive authorization expired before save or resume could continue. Reconnect and try again; your current deck is still open locally.'
+        ? `Google Sheets authorization expired before the host could reopen "${latestDeckName}" or keep it in sync. Reconnect and try again; your current deck is still open locally.`
+        : 'Google Sheets authorization expired before save or resume could continue. Reconnect and try again; your current deck is still open locally.'
     case 'connecting':
-      return 'Waiting for Google Drive permission so the host can save and reopen this deck.'
+      return 'Waiting for Google Sheets permission so the host can open or save this workbook.'
     case 'connected':
       return latestDeckName
-        ? `Drive is ready for "${latestDeckName}" and future save or resume actions stay host-owned.`
+        ? `Google Sheets is ready for "${latestDeckName}" and future save or resume actions stay host-owned.`
         : input.connectedAs
-          ? `Drive is connected for ${input.connectedAs} and ready to save this deck.`
-          : 'Drive is connected and ready to save or reopen a deck.'
+          ? `Google Sheets is connected for ${input.connectedAs} and ready to open or save flashcards.`
+          : 'Google Sheets is connected and ready to open or save flashcards.'
     case 'saving':
       return latestDeckName
-        ? `Saving "${latestDeckName}" to Drive through the host-managed connector.`
-        : 'Saving the current deck to Drive through the host-managed connector.'
+        ? `Saving "${latestDeckName}" to Google Sheets through the host-managed connector.`
+        : 'Saving the current deck to Google Sheets through the host-managed connector.'
     case 'loading':
       return latestDeckName
-        ? `Loading "${latestDeckName}" from the saved Drive deck list.`
-        : 'Loading the selected deck from Drive.'
+        ? `Loading "${latestDeckName}" from the saved Google Sheets list.`
+        : 'Loading the selected sheet from Google Sheets.'
     case 'error':
       return latestDeckName
-        ? `Drive needs attention before the host can keep "${latestDeckName}" in sync.`
-        : 'Drive needs attention before save or resume can continue.'
+        ? `Google Sheets needs attention before the host can keep "${latestDeckName}" in sync.`
+        : 'Google Sheets needs attention before save or resume can continue.'
     case 'needs-auth':
     default:
       return latestDeckName
-        ? `Reconnect Drive to reopen "${latestDeckName}" or save new progress from this deck.`
-        : 'Connect Drive to save this deck or reopen a recent one.'
+        ? `Reconnect Google Sheets to reopen "${latestDeckName}" or save new progress from this deck.`
+        : 'Connect Google Sheets to continue with Flashcard Studio or reopen a saved sheet.'
   }
 }
 
@@ -744,16 +744,16 @@ function buildFlashcardStudioSummary(snapshot: {
   const driveSentence =
     snapshot.drive.status === 'connected'
       ? snapshot.drive.lastSavedDeckName
-        ? `Drive is connected for "${snapshot.drive.lastSavedDeckName}".`
-        : 'Drive is connected for save and resume.'
+        ? `Google Sheets is connected for "${snapshot.drive.lastSavedDeckName}".`
+        : 'Google Sheets is connected for save and resume.'
       : snapshot.drive.status === 'expired'
         ? snapshot.drive.lastSavedDeckName
-          ? `Drive auth expired before "${snapshot.drive.lastSavedDeckName}" could be reopened or synced.`
-          : 'Drive auth expired before save or resume could continue.'
+          ? `Google Sheets auth expired before "${snapshot.drive.lastSavedDeckName}" could be reopened or synced.`
+          : 'Google Sheets auth expired before save or resume could continue.'
       : snapshot.drive.status === 'needs-auth' && snapshot.drive.recentDecks.length > 0
-        ? `Drive resume is available for ${snapshot.drive.recentDecks.length} saved deck${snapshot.drive.recentDecks.length === 1 ? '' : 's'} after reconnect.`
+        ? `Google Sheets resume is available for ${snapshot.drive.recentDecks.length} saved sheet${snapshot.drive.recentDecks.length === 1 ? '' : 's'} after reconnect.`
         : snapshot.drive.status === 'error'
-          ? `Drive needs attention: ${snapshot.drive.detail}`
+          ? `Google Sheets needs attention: ${snapshot.drive.detail}`
           : null
 
   if (snapshot.cardCount === 0) {
@@ -817,9 +817,9 @@ function buildFlashcardStudioResumeHint(snapshot: {
 }) {
   const reconnectHint =
     snapshot.drive.status === 'expired'
-      ? ' Reconnect Drive to restore saved deck access.'
+      ? ' Reconnect Google Sheets to restore saved sheet access.'
       : snapshot.drive.status === 'needs-auth' && snapshot.drive.recentDecks.length > 0
-        ? ` Reconnect Drive to reopen "${snapshot.drive.recentDecks[0]?.deckName}".`
+        ? ` Reconnect Google Sheets to reopen "${snapshot.drive.recentDecks[0]?.deckName}".`
         : ''
 
   if (snapshot.cardCount === 0) {

@@ -38,7 +38,7 @@ describe('default reviewed app catalog', () => {
     ])
   })
 
-  it('marks Flashcard Studio as the oauth reviewed app with host-owned Drive permissions', () => {
+  it('marks Flashcard Studio as the oauth reviewed app with host-owned Google Sheets permissions', () => {
     const flashcardStudio = getDefaultReviewedAppCatalogEntries().find(
       (entry) => entry.manifest.appId === 'flashcard-studio'
     )
@@ -47,8 +47,9 @@ describe('default reviewed app catalog', () => {
       manifest: {
         authMode: 'oauth',
         permissions: expect.arrayContaining([
-          expect.objectContaining({ id: 'drive.read', required: true }),
-          expect.objectContaining({ id: 'drive.write', required: true }),
+          expect.objectContaining({ id: 'session.context.read', required: true }),
+          expect.objectContaining({ id: 'sheets.read', required: true }),
+          expect.objectContaining({ id: 'sheets.write', required: true }),
         ]),
         supportedEvents: expect.arrayContaining(['app.requestAuth']),
       },

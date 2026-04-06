@@ -23,7 +23,7 @@ function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
     toolCallId: 'tool-reviewed-launch-flashcard-drive-1',
     toolName: 'flashcard_studio_open',
     args: {
-      request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+      request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
     },
     result: {
       kind: 'chatbridge.host.tool.record.v1',
@@ -36,7 +36,7 @@ function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
       retryClassification: 'safe',
       invocation: {
         args: {
-          request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+          request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
         },
       },
       outcome: {
@@ -46,8 +46,8 @@ function createFlashcardStudioLaunchToolCallPart(): MessageToolCallPart {
           appName: 'Flashcard Studio',
           capability: 'open',
           launchReady: true,
-          summary: 'Prepared the reviewed Flashcard Studio Drive resume request for the host-owned launch path.',
-          request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+          summary: 'Prepared the reviewed Flashcard Studio Google Sheets resume request for the host-owned launch path.',
+          request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
         },
       },
     },
@@ -104,7 +104,7 @@ function createDeckSnapshot(
   overrides: Partial<NonNullable<Parameters<typeof createFlashcardStudioAppSnapshot>[0]>> = {}
 ) {
   return createFlashcardStudioAppSnapshot({
-    request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+    request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
     deckTitle: 'Biology review',
     cards: [
       {
@@ -177,12 +177,12 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
       const authRequestedSnapshot = createDeckSnapshot({
         drive: {
           status: 'connecting',
-          statusText: 'Connecting Drive',
-          detail: 'Waiting for Google Drive permission so the host can save and reopen this deck.',
+          statusText: 'Connecting Google Sheets',
+          detail: 'Waiting for Google Sheets permission so the host can open or save this workbook.',
           recentDecks: [
             {
               deckId: 'drive-deck-biology-review',
-              deckName: 'Biology review.chatbridge-flashcards.json',
+              deckName: 'Biology review flashcards',
               modifiedAt: 1_717_000_100_000,
             },
           ],
@@ -196,7 +196,7 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         snapshot: authRequestedSnapshot,
         eventKind: 'auth.requested',
         payload: {
-          action: 'drive.connect',
+          action: 'sheets.connect',
         },
         summaryForModel: authRequestedSnapshot.summary,
         now: () => 23_000,
@@ -205,8 +205,8 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
       const connectedSnapshot = createDeckSnapshot({
         drive: {
           status: 'connected',
-          statusText: 'Drive connected',
-          detail: 'Drive is connected and ready to save this deck.',
+          statusText: 'Google Sheets connected',
+          detail: 'Google Sheets is connected and ready to open or save flashcards.',
           connectedAs: 'student@example.com',
           recentDecks: authRequestedSnapshot.drive.recentDecks,
         },
@@ -219,7 +219,7 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         snapshot: connectedSnapshot,
         eventKind: 'auth.linked',
         payload: {
-          action: 'drive.connect',
+          action: 'sheets.connect',
           outcome: 'success',
         },
         summaryForModel: connectedSnapshot.summary,
@@ -230,10 +230,10 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         drive: {
           ...connectedSnapshot.drive,
           status: 'connected',
-          statusText: 'Drive connected',
-          detail: 'Saved "Biology review.chatbridge-flashcards.json" to Drive through the host-managed connector.',
+          statusText: 'Google Sheets connected',
+          detail: 'Saved "Biology review flashcards" to Google Sheets through the host-managed connector.',
           lastSavedDeckId: 'drive-deck-biology-review',
-          lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+          lastSavedDeckName: 'Biology review flashcards',
           lastSavedAt: 1_717_000_300_000,
         },
         lastUpdatedAt: 25_000,
@@ -244,7 +244,7 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         part: getLaunchPart(connected),
         snapshot: savedSnapshot,
         payload: {
-          action: 'drive.save',
+          action: 'sheets.save',
           outcome: 'success',
         },
         summaryForModel: savedSnapshot.summary,
@@ -262,7 +262,7 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         ],
         drive: {
           ...savedSnapshot.drive,
-          detail: 'Loaded "Biology review.chatbridge-flashcards.json" from the saved Drive deck list.',
+          detail: 'Loaded "Biology review flashcards" from the saved Google Sheets list.',
         },
         lastAction: 'revealed-card',
         lastUpdatedAt: 26_000,
@@ -273,7 +273,7 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         part: getLaunchPart(saved),
         snapshot: resumedSnapshot,
         payload: {
-          action: 'drive.load',
+          action: 'sheets.load',
           outcome: 'success',
         },
         summaryForModel: resumedSnapshot.summary,
@@ -285,7 +285,7 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         role: 'assistant',
         timestamp: 27_000,
         isSummary: true,
-        contentParts: [{ type: 'text', text: 'Compacted summary of earlier Flashcard Studio Drive activity.' }],
+        contentParts: [{ type: 'text', text: 'Compacted summary of earlier Flashcard Studio Google Sheets activity.' }],
       }
       const followUp = createMessage('flashcard-drive-follow-up-user', 'user', 'Which card should I review again after resuming?')
       const compactionPoints: CompactionPoint[] = [
@@ -307,7 +307,7 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         text: expect.stringContaining('Biology review'),
       })
       expect((injectedContext?.contentParts[0] as { text?: string } | undefined)?.text).toContain(
-        'Saved deck: Biology review.chatbridge-flashcards.json'
+        'Saved deck: Biology review flashcards'
       )
       expect((injectedContext?.contentParts[0] as { text?: string } | undefined)?.text).toContain('Recent decks: 1')
       expect((injectedContext?.contentParts[0] as { text?: string } | undefined)?.text).toContain(
@@ -327,8 +327,8 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
       ])
     }))
 
-  it('surfaces a denied Drive auth attempt without leaving the reviewed launch session', () =>
-    traceScenario('surfaces a denied Drive auth attempt without leaving the reviewed launch session', () => {
+  it('surfaces a denied Google Sheets auth attempt without leaving the reviewed launch session', () =>
+    traceScenario('surfaces a denied Google Sheets auth attempt without leaving the reviewed launch session', () => {
       const { session, launchPart } = createSessionWithLaunchPart()
 
       const bootstrapped = applyReviewedAppLaunchBootstrapToSession(session, {
@@ -342,12 +342,12 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
       const deniedSnapshot = createDeckSnapshot({
         drive: {
           status: 'error',
-          statusText: 'Drive action blocked',
-          detail: 'Google Drive permission was not granted.',
+          statusText: 'Google Sheets action blocked',
+          detail: 'Google Sheets permission was not granted.',
           recentDecks: [
             {
               deckId: 'drive-deck-biology-review',
-              deckName: 'Biology review.chatbridge-flashcards.json',
+              deckName: 'Biology review flashcards',
               modifiedAt: 1_717_000_100_000,
             },
           ],
@@ -360,9 +360,9 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         part: getLaunchPart(bootstrapped),
         snapshot: deniedSnapshot,
         payload: {
-          action: 'drive.connect',
+          action: 'sheets.connect',
           outcome: 'error',
-          detail: 'Google Drive permission was not granted.',
+          detail: 'Google Sheets permission was not granted.',
         },
         summaryForModel: deniedSnapshot.summary,
         now: () => 31_000,
@@ -374,12 +374,12 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         snapshot: {
           drive: {
             status: 'error',
-            statusText: 'Drive action blocked',
-            detail: 'Google Drive permission was not granted.',
+            statusText: 'Google Sheets action blocked',
+            detail: 'Google Sheets permission was not granted.',
           },
         },
       })
-      expect(deniedPart.summaryForModel).toContain('Drive needs attention: Google Drive permission was not granted.')
+      expect(deniedPart.summaryForModel).toContain('Google Sheets needs attention: Google Sheets permission was not granted.')
       expect(denied.chatBridgeAppRecords?.events.map((event) => event.kind)).toEqual([
         'instance.created',
         'bridge.ready',
@@ -387,8 +387,8 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
       ])
     }))
 
-  it('fails closed when the selected Drive deck payload is malformed', () =>
-    traceScenario('fails closed when the selected Drive deck payload is malformed', () => {
+  it('fails closed when the selected Google Sheet payload is malformed', () =>
+    traceScenario('fails closed when the selected Google Sheet payload is malformed', () => {
       const { session, launchPart } = createSessionWithLaunchPart()
 
       const bootstrapped = applyReviewedAppLaunchBootstrapToSession(session, {
@@ -402,18 +402,18 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
       const connectedSnapshot = createDeckSnapshot({
         drive: {
           status: 'connected',
-          statusText: 'Drive connected',
-          detail: 'Drive is connected and ready to save this deck.',
+          statusText: 'Google Sheets connected',
+          detail: 'Google Sheets is connected and ready to open or save flashcards.',
           connectedAs: 'student@example.com',
           recentDecks: [
             {
               deckId: 'drive-deck-biology-review',
-              deckName: 'Biology review.chatbridge-flashcards.json',
+              deckName: 'Biology review flashcards',
               modifiedAt: 1_717_000_100_000,
             },
           ],
           lastSavedDeckId: 'drive-deck-biology-review',
-          lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+          lastSavedDeckName: 'Biology review flashcards',
           lastSavedAt: 1_717_000_300_000,
         },
         lastUpdatedAt: 33_000,
@@ -423,8 +423,8 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         drive: {
           ...connectedSnapshot.drive,
           status: 'error',
-          statusText: 'Drive action blocked',
-          detail: 'The selected Drive deck does not match the saved Flashcard schema.',
+          statusText: 'Google Sheets action blocked',
+          detail: 'The selected Google Sheet does not match the Flashcard Studio workbook format.',
         },
         lastUpdatedAt: 34_000,
       })
@@ -434,9 +434,9 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         part: getLaunchPart(bootstrapped),
         snapshot: malformedSnapshot,
         payload: {
-          action: 'drive.load',
+          action: 'sheets.load',
           outcome: 'error',
-          detail: 'The selected Drive deck does not match the saved Flashcard schema.',
+          detail: 'The selected Google Sheet does not match the Flashcard Studio workbook format.',
         },
         summaryForModel: malformedSnapshot.summary,
         now: () => 34_000,
@@ -448,18 +448,18 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         snapshot: {
           drive: {
             status: 'error',
-            statusText: 'Drive action blocked',
+            statusText: 'Google Sheets action blocked',
           },
         },
       })
       expect(malformedPart.summaryForModel).toContain(
-        'Drive needs attention: The selected Drive deck does not match the saved Flashcard schema.'
+        'Google Sheets needs attention: The selected Google Sheet does not match the Flashcard Studio workbook format.'
       )
       expect(malformedPart.summaryForModel).not.toContain('Plants use sunlight to make food.')
     }))
 
-  it('keeps reconnect guidance explicit when the Drive session expires after a saved deck exists', () =>
-    traceScenario('keeps reconnect guidance explicit when the Drive session expires after a saved deck exists', () => {
+  it('keeps reconnect guidance explicit when the Google Sheets session expires after a saved deck exists', () =>
+    traceScenario('keeps reconnect guidance explicit when the Google Sheets session expires after a saved deck exists', () => {
       const { session, launchPart } = createSessionWithLaunchPart()
 
       const bootstrapped = applyReviewedAppLaunchBootstrapToSession(session, {
@@ -473,17 +473,17 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
       const reconnectSnapshot = createDeckSnapshot({
         drive: {
           status: 'needs-auth',
-          statusText: 'Reconnect Drive to resume',
-          detail: 'Reconnect Drive to reopen "Biology review.chatbridge-flashcards.json" or save new progress from this deck.',
+          statusText: 'Reconnect Google Sheets to resume',
+          detail: 'Reconnect Google Sheets to reopen "Biology review flashcards" or save new progress from this deck.',
           recentDecks: [
             {
               deckId: 'drive-deck-biology-review',
-              deckName: 'Biology review.chatbridge-flashcards.json',
+              deckName: 'Biology review flashcards',
               modifiedAt: 1_717_000_100_000,
             },
           ],
           lastSavedDeckId: 'drive-deck-biology-review',
-          lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+          lastSavedDeckName: 'Biology review flashcards',
           lastSavedAt: 1_717_000_300_000,
         },
         lastUpdatedAt: 36_000,
@@ -494,7 +494,7 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         part: getLaunchPart(bootstrapped),
         snapshot: reconnectSnapshot,
         payload: {
-          action: 'drive.save',
+          action: 'sheets.save',
           outcome: 'expired',
         },
         summaryForModel: reconnectSnapshot.summary,
@@ -507,14 +507,14 @@ describe('ChatBridge Flashcard Studio Drive connect, save, load, and resume life
         snapshot: {
           drive: {
             status: 'needs-auth',
-            statusText: 'Reconnect Drive to resume',
-            lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+            statusText: 'Reconnect Google Sheets to resume',
+            lastSavedDeckName: 'Biology review flashcards',
           },
         },
       })
-      expect(degradedPart.summaryForModel).toContain('Drive resume is available for 1 saved deck after reconnect.')
+      expect(degradedPart.summaryForModel).toContain('Google Sheets resume is available for 1 saved sheet after reconnect.')
       expect((degradedPart.snapshot as { resumeHint?: string })?.resumeHint).toContain(
-        'Reconnect Drive to reopen "Biology review.chatbridge-flashcards.json".'
+        'Reconnect Google Sheets to reopen "Biology review flashcards".'
       )
     }))
 })

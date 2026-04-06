@@ -116,7 +116,7 @@ export function FlashcardStudioLaunchSurface({
         if (part.bridgeSessionId && JSON.stringify(hydratedSnapshot.drive) !== JSON.stringify(parsedSnapshot.drive)) {
           await persistHostSnapshot(hydratedSnapshot, {
             payload: {
-              action: 'drive.hydrate',
+              action: 'sheets.hydrate',
             },
           })
         }
@@ -144,8 +144,8 @@ export function FlashcardStudioLaunchSurface({
             drive: {
               ...baseSnapshot.drive,
               status: 'connecting',
-              statusText: 'Connecting Drive',
-              detail: 'Waiting for Google Drive permission so the host can save and reopen this deck.',
+              statusText: 'Connecting Google Sheets',
+              detail: 'Waiting for Google Sheets permission so the host can open or save this workbook.',
             },
             lastUpdatedAt: Date.now(),
           })
@@ -153,11 +153,11 @@ export function FlashcardStudioLaunchSurface({
           ? updateFlashcardStudioAppSnapshot(baseSnapshot, {
               drive: {
                 ...baseSnapshot.drive,
-                status: 'saving',
-                statusText: 'Saving to Drive',
-                detail: baseSnapshot.drive.lastSavedDeckName
-                  ? `Saving "${baseSnapshot.drive.lastSavedDeckName}" to Drive through the host-managed connector.`
-                  : 'Saving the current deck to Drive through the host-managed connector.',
+              status: 'saving',
+              statusText: 'Saving to Google Sheets',
+              detail: baseSnapshot.drive.lastSavedDeckName
+                  ? `Saving "${baseSnapshot.drive.lastSavedDeckName}" to Google Sheets through the host-managed connector.`
+                  : 'Saving the current deck to Google Sheets through the host-managed connector.',
               },
               lastUpdatedAt: Date.now(),
             })
@@ -165,20 +165,20 @@ export function FlashcardStudioLaunchSurface({
               drive: {
                 ...baseSnapshot.drive,
                 status: 'loading',
-                statusText: 'Loading from Drive',
-                detail: 'Loading the selected deck from Drive.',
+                statusText: 'Loading from Google Sheets',
+                detail: 'Loading the selected sheet from Google Sheets.',
               },
               lastUpdatedAt: Date.now(),
             })
 
     setBusyAction(action)
     setSnapshot(pendingSnapshot)
-    await persistHostSnapshot(pendingSnapshot, {
-      eventKind: action === 'connect' ? 'auth.requested' : 'state.updated',
-      payload: {
-        action: `drive.${action}`,
-      },
-    }).catch(() => undefined)
+      await persistHostSnapshot(pendingSnapshot, {
+        eventKind: action === 'connect' ? 'auth.requested' : 'state.updated',
+        payload: {
+          action: `sheets.${action}`,
+        },
+      }).catch(() => undefined)
 
     try {
       const nextSnapshot = await execute()
@@ -186,7 +186,7 @@ export function FlashcardStudioLaunchSurface({
       await persistHostSnapshot(nextSnapshot, {
         eventKind: action === 'connect' ? 'auth.linked' : 'state.updated',
         payload: {
-          action: `drive.${action}`,
+          action: `sheets.${action}`,
           outcome: 'success',
         },
       }).catch(() => undefined)
@@ -197,12 +197,12 @@ export function FlashcardStudioLaunchSurface({
       setSnapshot(errorSnapshot)
       await persistHostSnapshot(errorSnapshot, {
         payload: {
-          action: `drive.${action}`,
+          action: `sheets.${action}`,
           outcome:
             failureState.status === 'expired'
               ? 'expired'
               : failureState.status === 'needs-auth' &&
-                  detail === 'Google Drive permission was not granted.'
+                  detail === 'Google Sheets permission was not granted.'
                 ? 'denied'
                 : 'error',
           detail,
@@ -217,7 +217,19 @@ export function FlashcardStudioLaunchSurface({
   const canSave = busyAction === null && snapshot.cardCount > 0 && snapshot.drive.status === 'connected'
   const canLoad = busyAction === null && hasRecentDecks && snapshot.drive.status === 'connected'
   const connectLabel =
-    snapshot.drive.status === 'connected' || snapshot.drive.status === 'expired' ? 'Reconnect Drive' : 'Connect Drive'
+    snapshot.drive.status === 'connected' || snapshot.drive.status === 'expired' || hasRecentDecks
+      ? 'Reconnect Google Sheets'
+      : 'Connect Google Sheets'
+  const isRuntimeUnlocked =
+    snapshot.drive.status === 'connected' || snapshot.drive.status === 'saving' || snapshot.drive.status === 'loading'
+  const authGateTitle =
+    snapshot.drive.status === 'connecting'
+      ? 'Connecting Google Sheets...'
+      : snapshot.drive.status === 'expired'
+        ? 'Reconnect Google Sheets to continue'
+        : snapshot.drive.status === 'error'
+          ? 'Google Sheets needs attention'
+          : 'Connect Google Sheets to continue'
 
   return (
     <div
@@ -228,7 +240,7 @@ export function FlashcardStudioLaunchSurface({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <Text size="xs" fw={700} className="uppercase tracking-[0.1em] text-chatbox-tertiary">
-              Host-owned Drive rail
+              Host-owned Google Sheets rail
             </Text>
             <Text size="lg" fw={800} className="mt-1 text-chatbox-primary">
               {snapshot.drive.statusText}
@@ -267,7 +279,7 @@ export function FlashcardStudioLaunchSurface({
                 })
               }
             >
-              Save deck
+              Save to Sheets
             </Button>
           </div>
         </div>
@@ -276,7 +288,7 @@ export function FlashcardStudioLaunchSurface({
           <div className="mt-4 rounded-[18px] border border-chatbox-border-primary bg-chatbox-background-secondary px-3 py-3">
             <div className="flex items-center justify-between gap-3">
               <Text size="xs" fw={700} className="uppercase tracking-[0.08em] text-chatbox-tertiary">
-                Recent Drive decks
+                Recent Google Sheets
               </Text>
               {busyAction === 'load' ? <Loader size="xs" /> : null}
             </div>
@@ -305,7 +317,7 @@ export function FlashcardStudioLaunchSurface({
                       })
                     }
                   >
-                    Open recent
+                    Open sheet
                   </Button>
                 </div>
               ))}
@@ -314,15 +326,39 @@ export function FlashcardStudioLaunchSurface({
         ) : null}
       </div>
 
-      <div className="bg-chatbox-background-primary p-0">
-        <ReviewedAppRuntimeFrame
-          part={runtimePart}
-          launch={launch}
-          sessionId={sessionId}
-          messageId={messageId}
-          minHeight={620}
-        />
-      </div>
+      {isRuntimeUnlocked ? (
+        <div className="bg-chatbox-background-primary p-0">
+          <ReviewedAppRuntimeFrame
+            part={runtimePart}
+            launch={launch}
+            sessionId={sessionId}
+            messageId={messageId}
+            minHeight={620}
+          />
+        </div>
+      ) : (
+        <div className="bg-chatbox-background-primary p-6">
+          <div className="flex min-h-[420px] items-center justify-center rounded-[22px] border border-dashed border-chatbox-border-primary bg-chatbox-background-secondary/60 px-6 py-8 text-center">
+            <div className="max-w-[32rem]">
+              <Text size="sm" fw={700} className="uppercase tracking-[0.1em] text-chatbox-tertiary">
+                Flashcard Studio access
+              </Text>
+              <Text size="xl" fw={800} className="mt-3 text-chatbox-primary">
+                {authGateTitle}
+              </Text>
+              <Text size="sm" c="dimmed" className="mt-3 whitespace-pre-wrap">
+                Flashcard Studio stays gated until the host-owned Google Sheets step succeeds. After that, the same
+                thread unlocks the editor, study mode, and sheet-backed save or resume controls.
+              </Text>
+              {snapshot.drive.connectedAs ? (
+                <Text size="xs" c="dimmed" className="mt-4 uppercase tracking-[0.06em]">
+                  Ready to continue as {snapshot.drive.connectedAs}
+                </Text>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

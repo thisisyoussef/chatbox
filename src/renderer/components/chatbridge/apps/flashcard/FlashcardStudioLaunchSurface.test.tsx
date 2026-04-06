@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
         drive: {
           ...snapshot.drive,
           status: typeof input === 'string' ? 'error' : input.status,
-          statusText: typeof input === 'string' ? 'Drive action blocked' : input.statusText,
+          statusText: typeof input === 'string' ? 'Google Sheets action blocked' : input.statusText,
           detail: typeof input === 'string' ? input : input.detail,
         },
         lastUpdatedAt: snapshot.lastUpdatedAt + 1,
@@ -38,11 +38,11 @@ const mocks = vi.hoisted(() => ({
       error: unknown
     ): { status: 'needs-auth' | 'expired' | 'error'; statusText: string; detail: string } => ({
       status: 'error',
-      statusText: 'Drive action blocked',
-      detail: error instanceof Error ? error.message : 'Drive failed.',
+      statusText: 'Google Sheets action blocked',
+      detail: error instanceof Error ? error.message : 'Google Sheets failed.',
     })
   ),
-  getFlashcardDriveErrorMessage: vi.fn((error: unknown) => (error instanceof Error ? error.message : 'Drive failed.')),
+  getFlashcardDriveErrorMessage: vi.fn((error: unknown) => (error instanceof Error ? error.message : 'Google Sheets failed.')),
   persistReviewedAppLaunchHostSnapshot: vi.fn(async () => undefined),
 }))
 
@@ -77,7 +77,7 @@ function createLaunch(): ChatBridgeReviewedAppLaunch {
     toolName: 'flashcard_studio_open',
     capability: 'open',
     summary: 'Prepared the reviewed Flashcard Studio request for the host-owned launch path.',
-    request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+    request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
     uiEntry: 'https://apps.example.com/flashcard-studio',
     origin: 'https://apps.example.com',
   }
@@ -85,7 +85,7 @@ function createLaunch(): ChatBridgeReviewedAppLaunch {
 
 function createBaseSnapshot() {
   return createFlashcardStudioAppSnapshot({
-    request: 'Open Flashcard Studio and reconnect Drive so I can resume my saved biology deck.',
+    request: 'Open Flashcard Studio and reconnect Google Sheets so I can resume my saved biology deck.',
     deckTitle: 'Biology review',
     cards: [
       {
@@ -149,7 +149,7 @@ describe('FlashcardStudioLaunchSurface', () => {
     vi.clearAllMocks()
   })
 
-  it('renders the host-owned Drive rail with hydrated reconnect metadata and keeps load gated until Drive is connected', async () => {
+  it('renders the host-owned Google Sheets rail, keeps the runtime gated, and leaves load disabled until Sheets is connected', async () => {
     const baseSnapshot = createBaseSnapshot()
     const hydratedSnapshot = updateFlashcardStudioAppSnapshot(baseSnapshot, {
       drive: {
@@ -157,20 +157,20 @@ describe('FlashcardStudioLaunchSurface', () => {
         recentDecks: [
           {
             deckId: 'drive-deck-biology-review',
-            deckName: 'Biology review.chatbridge-flashcards.json',
+            deckName: 'Biology review flashcards',
             modifiedAt: 1_717_000_100_000,
             lastOpenedAt: 1_717_000_200_000,
           },
         ],
         lastSavedDeckId: 'drive-deck-biology-review',
-        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        lastSavedDeckName: 'Biology review flashcards',
         lastSavedAt: 1_717_000_100_000,
       },
       lastUpdatedAt: baseSnapshot.lastUpdatedAt,
     })
     mocks.hydrateFlashcardStudioDriveSnapshot.mockResolvedValue(hydratedSnapshot)
 
-    const { findByText, getByRole, getByTestId } = render(
+    const { findByText, getByRole, queryByTestId } = render(
       <MantineProvider>
         <FlashcardStudioLaunchSurface
           part={createPart(baseSnapshot)}
@@ -181,24 +181,24 @@ describe('FlashcardStudioLaunchSurface', () => {
       </MantineProvider>
     )
 
-    await findByText('Host-owned Drive rail')
-    await findByText('Reconnect Drive to resume')
-    expect(getByRole('button', { name: 'Open recent' }).hasAttribute('disabled')).toBe(true)
-    expect(getByRole('button', { name: 'Save deck' }).hasAttribute('disabled')).toBe(true)
-    expect(getByTestId('reviewed-runtime-frame').textContent).toContain('"deckTitle":"Biology review"')
+    await findByText('Host-owned Google Sheets rail')
+    await findByText('Reconnect Google Sheets to resume')
+    expect(getByRole('button', { name: 'Open sheet' }).hasAttribute('disabled')).toBe(true)
+    expect(getByRole('button', { name: 'Save to Sheets' }).hasAttribute('disabled')).toBe(true)
+    expect(queryByTestId('reviewed-runtime-frame')).toBeNull()
 
     await waitFor(() => {
       expect(mocks.persistReviewedAppLaunchHostSnapshot).toHaveBeenCalledWith(
         expect.objectContaining({
           payload: {
-            action: 'drive.hydrate',
+            action: 'sheets.hydrate',
           },
         })
       )
     })
   })
 
-  it('connects Drive through the host rail, enables save or reopen actions, and persists host snapshots for connect, save, and load', async () => {
+  it('connects Google Sheets through the host rail, unlocks the runtime, enables save or reopen actions, and persists host snapshots for connect, save, and load', async () => {
     const baseSnapshot = createBaseSnapshot()
     const hydratedSnapshot = updateFlashcardStudioAppSnapshot(baseSnapshot, {
       drive: {
@@ -206,7 +206,7 @@ describe('FlashcardStudioLaunchSurface', () => {
         recentDecks: [
           {
             deckId: 'drive-deck-biology-review',
-            deckName: 'Biology review.chatbridge-flashcards.json',
+            deckName: 'Biology review flashcards',
             modifiedAt: 1_717_000_100_000,
           },
         ],
@@ -217,8 +217,8 @@ describe('FlashcardStudioLaunchSurface', () => {
       drive: {
         ...hydratedSnapshot.drive,
         status: 'connected',
-        statusText: 'Drive connected',
-        detail: 'Drive is connected and ready to save this deck.',
+        statusText: 'Google Sheets connected',
+        detail: 'Google Sheets is connected and ready to open or save flashcards.',
         connectedAs: 'student@example.com',
       },
       lastUpdatedAt: hydratedSnapshot.lastUpdatedAt + 1,
@@ -227,10 +227,10 @@ describe('FlashcardStudioLaunchSurface', () => {
       drive: {
         ...connectedSnapshot.drive,
         status: 'connected',
-        statusText: 'Drive connected',
-        detail: 'Saved "Biology review.chatbridge-flashcards.json" to Drive through the host-managed connector.',
+        statusText: 'Google Sheets connected',
+        detail: 'Saved "Biology review flashcards" to Google Sheets through the host-managed connector.',
         lastSavedDeckId: 'drive-deck-biology-review',
-        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        lastSavedDeckName: 'Biology review flashcards',
         lastSavedAt: 1_717_000_300_000,
       },
       lastUpdatedAt: connectedSnapshot.lastUpdatedAt + 1,
@@ -242,7 +242,7 @@ describe('FlashcardStudioLaunchSurface', () => {
       revealedCardId: 'card-2',
       drive: {
         ...savedSnapshot.drive,
-        detail: 'Loaded "Biology review.chatbridge-flashcards.json" from the saved Drive deck list.',
+        detail: 'Loaded "Biology review flashcards" from the saved Google Sheets list.',
       },
       lastUpdatedAt: savedSnapshot.lastUpdatedAt + 1,
     })
@@ -263,20 +263,20 @@ describe('FlashcardStudioLaunchSurface', () => {
       </MantineProvider>
     )
 
-    await findByText('Reconnect Drive to resume')
-    fireEvent.click(getByRole('button', { name: 'Connect Drive' }))
+    await findByText('Reconnect Google Sheets to resume')
+    fireEvent.click(getByRole('button', { name: 'Reconnect Google Sheets' }))
 
     await waitFor(() => {
       expect(mocks.connectFlashcardStudioDrive).toHaveBeenCalled()
     })
 
-    await findByText('Drive connected')
+    await findByText('Google Sheets connected')
     await waitFor(() => {
-      expect(getByRole('button', { name: 'Save deck' }).hasAttribute('disabled')).toBe(false)
-      expect(getByRole('button', { name: 'Open recent' }).hasAttribute('disabled')).toBe(false)
+      expect(getByRole('button', { name: 'Save to Sheets' }).hasAttribute('disabled')).toBe(false)
+      expect(getByRole('button', { name: 'Open sheet' }).hasAttribute('disabled')).toBe(false)
     })
 
-    fireEvent.click(getByRole('button', { name: 'Save deck' }))
+    fireEvent.click(getByRole('button', { name: 'Save to Sheets' }))
     await waitFor(() => {
       expect(mocks.saveFlashcardStudioDriveSnapshot).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -285,7 +285,7 @@ describe('FlashcardStudioLaunchSurface', () => {
       )
     })
 
-    fireEvent.click(getByRole('button', { name: 'Open recent' }))
+    fireEvent.click(getByRole('button', { name: 'Open sheet' }))
     await waitFor(() => {
       expect(mocks.loadFlashcardStudioDriveSnapshot).toHaveBeenCalledWith(
         'drive-deck-biology-review',
@@ -303,23 +303,23 @@ describe('FlashcardStudioLaunchSurface', () => {
     expect(persistedKinds.filter((kind) => kind === 'state.updated').length).toBeGreaterThanOrEqual(3)
   })
 
-  it('keeps expired Drive auth explicit when a save fails after a prior connection', async () => {
+  it('keeps expired Google Sheets auth explicit when a save fails after a prior connection', async () => {
     const baseSnapshot = createBaseSnapshot()
     const hydratedSnapshot = updateFlashcardStudioAppSnapshot(baseSnapshot, {
       drive: {
         status: 'connected',
-        statusText: 'Drive connected',
-        detail: 'Drive is connected and ready to save this deck.',
+        statusText: 'Google Sheets connected',
+        detail: 'Google Sheets is connected and ready to open or save flashcards.',
         connectedAs: 'student@example.com',
         recentDecks: [
           {
             deckId: 'drive-deck-biology-review',
-            deckName: 'Biology review.chatbridge-flashcards.json',
+            deckName: 'Biology review flashcards',
             modifiedAt: 1_717_000_100_000,
           },
         ],
         lastSavedDeckId: 'drive-deck-biology-review',
-        lastSavedDeckName: 'Biology review.chatbridge-flashcards.json',
+        lastSavedDeckName: 'Biology review flashcards',
         lastSavedAt: 1_717_000_100_000,
       },
       lastUpdatedAt: baseSnapshot.lastUpdatedAt,
@@ -327,18 +327,18 @@ describe('FlashcardStudioLaunchSurface', () => {
 
     mocks.hydrateFlashcardStudioDriveSnapshot.mockResolvedValue(hydratedSnapshot)
     mocks.saveFlashcardStudioDriveSnapshot.mockRejectedValue(
-      Object.assign(new Error('Drive authorization expired before the host could finish this action.'), {
+      Object.assign(new Error('Google Sheets authorization expired before the host could finish this action.'), {
         code: 'auth-expired',
       })
     )
     mocks.getFlashcardDriveFailureState.mockReturnValue({
       status: 'expired',
-      statusText: 'Reconnect Drive to continue',
+      statusText: 'Reconnect Google Sheets to continue',
       detail:
-        'Drive authorization expired before the host could reopen "Biology review.chatbridge-flashcards.json" or keep it in sync. Reconnect and try again; your current deck is still open locally.',
+        'Google Sheets authorization expired before the host could reopen "Biology review flashcards" or keep it in sync. Reconnect and try again; your current deck is still open locally.',
     })
 
-    const { findByText, getByRole } = render(
+    const { findByText, findByTestId, getByRole } = render(
       <MantineProvider>
         <FlashcardStudioLaunchSurface
           part={createPart(baseSnapshot)}
@@ -349,10 +349,13 @@ describe('FlashcardStudioLaunchSurface', () => {
       </MantineProvider>
     )
 
-    await findByText('Drive connected')
-    fireEvent.click(getByRole('button', { name: 'Save deck' }))
+    await findByText('Google Sheets connected')
+    fireEvent.click(getByRole('button', { name: 'Save to Sheets' }))
 
-    await findByText('Reconnect Drive to continue')
+    await findByTestId('flashcard-studio-launch-surface')
+    await findByText(
+      'Google Sheets authorization expired before the host could reopen "Biology review flashcards" or keep it in sync. Reconnect and try again; your current deck is still open locally.'
+    )
     expect(mocks.getFlashcardDriveFailureState).toHaveBeenCalledWith(
       expect.objectContaining({
         deckTitle: 'Biology review',
@@ -365,9 +368,9 @@ describe('FlashcardStudioLaunchSurface', () => {
       expect(mocks.persistReviewedAppLaunchHostSnapshot).toHaveBeenCalledWith(
         expect.objectContaining({
           payload: expect.objectContaining({
-            action: 'drive.save',
+            action: 'sheets.save',
             outcome: 'expired',
-            detail: 'Drive authorization expired before the host could finish this action.',
+            detail: 'Google Sheets authorization expired before the host could finish this action.',
           }),
         })
       )
