@@ -4,6 +4,7 @@ This folder captures the Week 7 ChatBridge case study and a working interpretati
 
 Files:
 - `README.md`: distilled product and engineering brief
+- `SUBMISSION.md`: reviewer-facing submission entry point and graded-scenario checklist
 - `BOOTSTRAP.md`: Pack 0 bootstrap, env, and setup contract
 - `DEPLOYMENT.md`: Pack 0 deployment and infrastructure baseline
 - `SERVICE_TOPOLOGY.md`: Pack 0 runtime, service, and deployment boundary map
@@ -168,20 +169,24 @@ The spec's priority order is sound and matches this repo:
 5. Add multi-app routing after one vertical slice works.
 6. Add auth-heavy apps after unauthenticated apps are stable.
 
-## Candidate App Mix
+## Current Submission Portfolio
 
-Minimum good portfolio:
+Current reviewer-facing portfolio:
 
 - Chess
   - rich state
   - embedded UI
   - multi-turn assistant reasoning
-- Weather or calculator-style utility
-  - simpler public or no-auth tool flow
-  - good for proving routing and result summarization
-- Spotify, GitHub, or Google Calendar style app
-  - authenticated integration
-  - proves token handling and per-user authorization
+- Drawing Kit
+  - second reviewed runtime
+  - inline interaction and completion handoff
+  - later-chat continuity after checkpointing
+- Flashcard Studio with Google Drive
+  - authenticated reviewed app
+  - host-owned auth and persistence rail
+  - save, resume, and recovery proof
+- Weather Dashboard remains available as an extra utility proof, but it is not
+  the primary reviewer path.
 
 ## Practical Goal For This Repo
 
