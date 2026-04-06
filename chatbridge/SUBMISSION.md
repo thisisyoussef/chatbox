@@ -32,6 +32,9 @@ current `main` branch.
 - Reviewed-partner contract and local harness:
   [PARTNER_SDK.md](./PARTNER_SDK.md),
   [examples/reviewed-partner-manifest.example.json](./examples/reviewed-partner-manifest.example.json)
+- AI cost packet and projection assumptions:
+  [AI_COST_ANALYSIS.md](./AI_COST_ANALYSIS.md),
+  [examples/ai-cost-analysis.reference.json](./examples/ai-cost-analysis.reference.json)
 
 ## Recommended Reviewer Flow
 
@@ -156,6 +159,7 @@ Flashcard Studio is the authenticated third-party proof for the submission.
 
 ## Notes
 
-- This packet covers the reviewer-ready index and graded-scenario mapping.
-- Partner DX expansion and AI cost analysis remain follow-up submission slices
-  under the broader `SC-008` convergence story.
+- This packet now covers the reviewer-ready index, partner onboarding quickstart,
+  and AI cost analysis for the current `main` branch.
+- A demo-video script and screenshot inventory are still separate submission
+  follow-up material.
