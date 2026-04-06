@@ -250,7 +250,6 @@ pnpm dev
 The main `pnpm` workflow entrypoints now fail fast if the shell is on the wrong
 Node major or the worktree install state is stale, so you get an early
 “switch Node / rerun pnpm install” failure before Vite starts rendering routes.
-
 To run against the local Chatbox API endpoint, use:
 
 ```bash
@@ -293,6 +292,21 @@ lives in [chatbridge/DEPLOYMENT.md](./chatbridge/DEPLOYMENT.md).
 
 For the current ChatBridge-specific bootstrap and environment contract, see
 [chatbridge/BOOTSTRAP.md](./chatbridge/BOOTSTRAP.md).
+
+## ChatBridge Partner Docs
+
+For third-party developer onboarding and the current ChatBridge contract, start
+with these documents:
+
+- [chatbridge/README.md](./chatbridge/README.md) for the ChatBridge docs index
+- [chatbridge/PARTNER_SETUP.md](./chatbridge/PARTNER_SETUP.md) for the local
+  setup and quickstart path
+- [chatbridge/PARTNER_API.md](./chatbridge/PARTNER_API.md) for the reviewed app
+  manifest, bridge lifecycle, auth, and completion contract
+- [chatbridge/ARCHITECTURE.md](./chatbridge/ARCHITECTURE.md) for the system
+  overview and trust boundaries
+- [chatbridge/PRESEARCH.md](./chatbridge/PRESEARCH.md) for the platform
+  rationale and longer-form contract framing
 
 ## Star History
 

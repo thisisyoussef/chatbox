@@ -17,6 +17,13 @@ behaviors and edge cases leave inspectable LangSmith evidence. A story is not
 find named scenario or manual-smoke runs for the representative success,
 failure, degraded, and continuity paths.
 
+That foundation is now also local-first:
+
+- reusable ChatBridge EDD scenarios live in `test/integration/chatbridge/edd/`
+- vendor-neutral proof logs are written to `test/output/chatbridge-edd/`
+- live LangSmith uploads are opt-in through
+  `.ai/workflows/langsmith-finish-check.md` when fresh remote proof matters
+
 ## Current Repo Observability Seams
 
 ### Runtime error and telemetry hooks
@@ -34,6 +41,22 @@ failure, degraded, and continuity paths.
 
 - mock sentry adapter:
   `test/integration/mocks/sentry.ts`
+
+### ChatBridge EDD seam
+
+- Vitest config:
+  `ls.vitest.config.ts`
+- local EDD suite:
+  `test/integration/chatbridge/edd/recompleted-stories.eval.ts`
+- local proof logger:
+  `test/integration/chatbridge/edd/local-log.ts`
+- LangSmith env normalization and trace-step helper:
+  `test/integration/chatbridge/edd/langsmith.ts`
+- reusable scenario wrapper:
+  `test/integration/chatbridge/edd/scenario-runner.ts`
+- suite commands:
+  - `pnpm run test:chatbridge:edd`
+  - `pnpm run test:chatbridge:edd:live`
 
 ### LangSmith tracing seam
 
@@ -142,6 +165,10 @@ These scenarios should be wired so at least one supported environment can emit
 named LangSmith proof runs for them. Checked-in tests may stay runnable with
 tracing disabled by default, but the story is not trace-driven-complete until
 the scenario harness can produce real traces when `LANGSMITH_TRACING=true`.
+
+Local JSON proof under `test/output/chatbridge-edd/` is now the required
+baseline for the EDD harness. Live LangSmith uploads remain the finish-check
+layer when credentials and quota are available.
 
 ## Current Trace Coverage
 
@@ -423,9 +450,29 @@ when a story changes:
 ## Recommended Starter Assets
 
 - `test/integration/chatbridge/scenarios/` for representative lifecycle cases
+- `test/integration/chatbridge/edd/` for durable local-first EDD coverage
 - story-level trace/eval sections in later technical plans
 - reusable mock observability sink for integration tests when later stories need
   assertion on emitted lifecycle events
+
+## Recompleted Story Baseline
+
+The EDD retrofit now backfills the completed orchestration-heavy ChatBridge
+stories that were previously merged without a dedicated EDD layer:
+
+- `CB-102`, `CB-103`, `CB-104`: persistence, shell artifacts, exportability,
+  and stale partial lifecycle continuity
+- `CB-201`: reviewed app registry acceptance and rejection
+- `CB-202`: host-owned lifecycle record stream and hydration
+- `CB-203`: launch-scoped bridge handshake and replay rejection
+- `CB-204`: host-coordinated tool execution contract
+- `CB-300`: reviewed single-app discovery, match, and ambiguity refusal
+- `CB-303`: live and stale Chess board-context injection before model calls
+
+The inventory and proof mapping live in:
+
+- `docs/specs/CHATBRIDGE-000-program-roadmap/pack-00-foundation-and-instrumentation/cb-003-evals-tracing-and-observability-foundation/edd-recompletion-inventory.md`
+- `test/integration/chatbridge/edd/recompleted-stories.eval.ts`
 
 ## Remaining Gaps
 
@@ -438,3 +485,6 @@ when a story changes:
   recovery seams land.
 - Privacy rules still apply: traces should continue using the existing
   sanitization and redaction helpers rather than logging arbitrary raw payloads.
+- live LangSmith verification still depends on valid credentials and account
+  quota; quota exhaustion should block only the remote finish check, not local
+  EDD

@@ -56,46 +56,6 @@ CB-303 adds the first live board-context reasoning slice:
   `stream-text` model path for live and stale mid-game follow-up turns without
   exposing raw partner prose
 
-CB-302 adds the first live Chess runtime interaction slice:
-
-- `scenarios/chess-runtime-legal-move-engine.test.tsx`
-  covers the in-thread Chess board accepting a legal move from the seeded
-  mid-game fixture and persisting the updated host-owned board snapshot plus
-  validation state through the runtime shell
-
-CB-403 adds the first generic later-turn app-summary continuity slice:
-
-- `scenarios/active-app-context-injection.test.ts`
-  covers active app-summary injection, recent completed-summary selection, and
-  stale fallback messaging through the normal `stream-text` model path using
-  host-owned `chatBridgeAppRecords`
-
-CB-705 adds the first unified platform-recovery slice:
-
-- `scenarios/bridge-session-security.test.ts`
-  now covers malformed bridge traffic, launch timeout, replay rejection, and
-  explicit runtime-crash recovery signaling through the host controller
-- `src/shared/chatbridge/live-seeds.ts`
-  now publishes the `Platform recovery` seeded session so the new recovery
-  model is inspectable through `/dev/chatbridge` and preset-session backfill
-
-CB-702 adds the first operator-control and lifecycle-observability slice:
-
-- `scenarios/operator-controls-rollout.test.ts`
-  covers normalized lifecycle event recording, per-app health derivation,
-  version-scoped disablement, and explicit active-session posture for
-  operator-triggered kill switches
-
-CB-704 adds the reviewed-partner validator and local harness slice:
-
-- `scenarios/partner-sdk-harness.test.ts`
-  covers reviewed-manifest validation guidance, launch-scoped bootstrap
-  conformance, host render delivery, replay rejection, and explicit recovery
-  signals through the partner-facing local harness
-- `mocks/partner-harness.ts`
-  exposes the deterministic bridge-controller wrapper used by partner
-  conformance scenarios and docs
-
 That scenario set is the baseline gate for later ChatBridge packs that add real
 app-aware schema, containers, and lifecycle events. New ChatBridge persistence,
 manifest, or tool-execution changes should extend this suite instead of
@@ -105,3 +65,16 @@ Reference:
 
 - `chatbridge/INTEGRATION_HARNESS.md`
 - `chatbridge/EVALS_AND_OBSERVABILITY.md`
+- `test/integration/chatbridge/edd/README.md`
+
+## ChatBridge EDD
+
+`test/integration/chatbridge/edd/` is the local-first EDD layer for
+orchestration-heavy ChatBridge behavior.
+
+Use it for:
+
+- durable regression coverage over already-merged ChatBridge runtime stories
+- vendor-neutral proof logs under `test/output/chatbridge-edd/`
+- optional live LangSmith uploads when
+  `.ai/workflows/langsmith-finish-check.md` is relevant
