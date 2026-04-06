@@ -270,6 +270,31 @@ describe('chatbridge manual smoke tracing', () => {
     await expect(finishChatBridgeManualSmokeTrace('manual-run-1', 'passed')).resolves.toBe(true)
   })
 
+  it('marks the Intelligent routing fixture as a supported SC-002A smoke path', async () => {
+    expect(getChatBridgeManualSmokeFixtureMode('intelligent-routing')).toMatchObject({
+      support: 'supported',
+      descriptor: expect.objectContaining({
+        slug: 'chatbridge-intelligent-routing',
+        storyId: 'SC-002A',
+      }),
+    })
+
+    const fixture = getChatBridgeLiveSeedFixtures().find((candidate) => candidate.id === 'intelligent-routing')
+    expect(fixture).toBeTruthy()
+    if (!fixture) {
+      return
+    }
+
+    await expect(startChatBridgeManualSmokeTrace(fixture, 'seeded-session-intelligent-routing')).resolves.toMatchObject({
+      status: 'started',
+      traceId: 'manual-run-1',
+      traceLabel: expect.stringContaining('chatbridge.manual_smoke.chatbridge-intelligent-routing'),
+      run: {
+        fixtureId: 'intelligent-routing',
+      },
+    })
+  })
+
   it('marks the Flashcard Studio Drive expired auth fixture as a supported SC-007B smoke path', async () => {
     expect(getChatBridgeManualSmokeFixtureMode('flashcard-studio-drive-expired')).toMatchObject({
       support: 'supported',

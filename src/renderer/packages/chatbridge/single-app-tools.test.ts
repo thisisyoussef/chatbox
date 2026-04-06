@@ -3,14 +3,30 @@ import '../../../../test/integration/chatbridge/setup'
 import type { ToolExecutionOptions } from 'ai'
 import { describe, expect, it } from 'vitest'
 import { createMessage } from '@shared/types'
+import type { ModelInterface } from '@shared/models/types'
 import type { ReviewedAppCatalogEntry } from '@shared/chatbridge'
 import { prepareToolsForExecution } from '@/packages/model-calls/stream-text'
-import { createReviewedSingleAppToolSet } from './single-app-tools'
+import { createIntelligentReviewedSingleAppToolSet, createReviewedSingleAppToolSet } from './single-app-tools'
 
 function getExecutionOptions(toolCallId: string): ToolExecutionOptions {
   return {
     toolCallId,
     messages: [],
+  }
+}
+
+function createSemanticRoutingModel(responseText: string): ModelInterface {
+  return {
+    name: 'Semantic Routing Test Model',
+    modelId: 'semantic-routing-test-model',
+    isSupportVision: () => true,
+    isSupportToolUse: () => true,
+    isSupportSystemMessage: () => true,
+    chat: async () => ({
+      contentParts: [{ type: 'text', text: responseText }],
+    }),
+    chatStream: async function* () {},
+    paint: async () => [],
   }
 }
 
@@ -229,6 +245,57 @@ describe('ChatBridge reviewed single-app tools', () => {
         },
       },
     })
+  })
+
+  it('routes a non-explicit sketch request into Drawing Kit through the intelligent reviewed-app path', async () => {
+    const prompt = 'Help me sketch a poster idea for Earth Day.'
+    const { selection, tools, routeDecision, routingStrategy, semanticClassifierStatus } =
+      await createIntelligentReviewedSingleAppToolSet({
+        messages: [createMessage('user', prompt)],
+        model: createSemanticRoutingModel(
+          JSON.stringify({
+            decision: 'invoke',
+            selectedAppId: 'drawing-kit',
+            alternateAppIds: [],
+            confidence: 'high',
+            rationale: 'The user wants a drawing surface for a poster idea.',
+          })
+        ),
+      })
+
+    expect(selection).toMatchObject({
+      status: 'matched',
+      appId: 'drawing-kit',
+      toolName: 'drawing_kit_open',
+    })
+    expect(Object.keys(tools)).toEqual(['drawing_kit_open'])
+    expect(routeDecision).toMatchObject({
+      kind: 'invoke',
+      reasonCode: 'semantic-app-match',
+      selectedAppId: 'drawing-kit',
+    })
+    expect(routingStrategy).toBe('semantic')
+    expect(semanticClassifierStatus).toBe('accepted')
+  })
+
+  it('falls back to the lexical refusal path when semantic routing returns invalid output', async () => {
+    const prompt = 'What should I cook for dinner tonight?'
+    const { selection, tools, routeDecision, routingStrategy, semanticClassifierStatus } =
+      await createIntelligentReviewedSingleAppToolSet({
+        messages: [createMessage('user', prompt)],
+        model: createSemanticRoutingModel('not valid json'),
+      })
+
+    expect(selection).toMatchObject({
+      status: 'chat-only',
+    })
+    expect(tools).toEqual({})
+    expect(routeDecision).toMatchObject({
+      kind: 'refuse',
+      reasonCode: 'no-confident-match',
+    })
+    expect(routingStrategy).toBe('lexical')
+    expect(semanticClassifierStatus).toBe('parse-failed')
   })
 
   it('fails closed when the Chess tool receives malformed args', async () => {

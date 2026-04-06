@@ -183,6 +183,14 @@ const manualSmokeTraceDescriptors: Record<
     smokeSupport: 'supported',
     storyId: 'I001-02',
   },
+  'intelligent-routing': {
+    slug: 'chatbridge-intelligent-routing',
+    primaryFamily: 'routing',
+    evidenceFamilies: ['reviewed-app-launch'],
+    runtimeTarget: MANUAL_SMOKE_RUNTIME_TARGET,
+    smokeSupport: 'supported',
+    storyId: 'SC-002A',
+  },
 }
 
 function getProjectName(payload?: LangSmithStatusPayload) {
@@ -203,6 +211,8 @@ export function getChatBridgeManualSmokeFixtureMode(fixtureId: string): ManualSm
             ? 'Supported desktop smoke fixture covering Chess follow-up reasoning context.'
             : fixtureId === 'runtime-and-route-receipt'
               ? 'Supported desktop smoke fixture covering tray gating when a later chat-only route receipt follows a real runtime.'
+              : fixtureId === 'intelligent-routing'
+                ? 'Supported desktop smoke fixture covering semantic reviewed-app routing for loose natural-language prompts.'
             : fixtureId === 'drawing-kit-doodle-dare'
               ? 'Supported desktop smoke fixture covering the Drawing Kit doodle game, checkpoint continuity, and follow-up chat.'
             : fixtureId === 'flashcard-studio-study-mode'

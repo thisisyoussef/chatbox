@@ -2312,6 +2312,150 @@ export function buildChatBridgeRuntimeAndRouteReceiptSessionFixture(): Omit<Sess
   }
 }
 
+export function buildChatBridgeIntelligentRoutingSessionFixture(): Omit<Session, 'id'> {
+  const flashcardRouteReceipt = createChatBridgeRouteMessagePart({
+    schemaVersion: 2,
+    hostRuntime: 'desktop-electron',
+    kind: 'invoke',
+    reasonCode: 'semantic-app-match',
+    prompt: 'I need to cram biology terms before tomorrow\'s quiz.',
+    summary: 'The host identified Flashcard Studio as the best reviewed-app fit for this request.',
+    selectedAppId: 'flashcard-studio',
+    matches: [
+      {
+        appId: 'flashcard-studio',
+        appName: 'Flashcard Studio',
+        matchedContexts: [],
+        matchedTerms: ['biology', 'quiz'],
+        score: 9,
+        exactAppMatch: false,
+        exactToolMatch: false,
+      },
+    ],
+  })
+  const drawingRouteReceipt = createChatBridgeRouteMessagePart({
+    schemaVersion: 2,
+    hostRuntime: 'desktop-electron',
+    kind: 'invoke',
+    reasonCode: 'semantic-app-match',
+    prompt: 'Help me sketch a poster idea for Earth Day.',
+    summary: 'The host identified Drawing Kit as the best reviewed-app fit for this request.',
+    selectedAppId: 'drawing-kit',
+    matches: [
+      {
+        appId: 'drawing-kit',
+        appName: 'Drawing Kit',
+        matchedContexts: [],
+        matchedTerms: ['sketch', 'poster'],
+        score: 8,
+        exactAppMatch: false,
+        exactToolMatch: false,
+      },
+    ],
+  })
+  const weatherRouteReceipt = createChatBridgeRouteMessagePart({
+    schemaVersion: 2,
+    hostRuntime: 'desktop-electron',
+    kind: 'invoke',
+    reasonCode: 'semantic-app-match',
+    prompt: 'Do I need an umbrella before school tomorrow in Chicago?',
+    summary: 'The host identified Weather Dashboard as the best reviewed-app fit for this request.',
+    selectedAppId: 'weather-dashboard',
+    matches: [
+      {
+        appId: 'weather-dashboard',
+        appName: 'Weather Dashboard',
+        matchedContexts: [],
+        matchedTerms: ['umbrella', 'tomorrow', 'chicago'],
+        score: 8,
+        exactAppMatch: false,
+        exactToolMatch: false,
+      },
+    ],
+  })
+  const clarifyReceipt = createChatBridgeRouteMessagePart({
+    schemaVersion: 2,
+    hostRuntime: 'desktop-electron',
+    kind: 'clarify',
+    reasonCode: 'ambiguous-match',
+    prompt: 'Help me sketch a weather-themed poster.',
+    summary: 'This request could fit Drawing Kit or Weather Dashboard, so the host is asking before launching anything.',
+    selectedAppId: 'drawing-kit',
+    matches: [
+      {
+        appId: 'drawing-kit',
+        appName: 'Drawing Kit',
+        matchedContexts: [],
+        matchedTerms: ['sketch', 'poster'],
+        score: 7,
+        exactAppMatch: false,
+        exactToolMatch: false,
+      },
+      {
+        appId: 'weather-dashboard',
+        appName: 'Weather Dashboard',
+        matchedContexts: [],
+        matchedTerms: ['weather'],
+        score: 6,
+        exactAppMatch: false,
+        exactToolMatch: false,
+      },
+    ],
+  })
+
+  return {
+    name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Intelligent routing`,
+    type: 'chat',
+    threadName: 'Intelligent Routing',
+    messages: [
+      createTextMessage(
+        'msg-intelligent-routing-system',
+        'system',
+        'Treat reviewed-app routing as a host-owned intent decision: loose natural-language requests may still map to the right app, but ambiguous prompts must stay explainable.',
+        1
+      ),
+      createTextMessage('msg-intelligent-routing-user-flashcards', 'user', 'I need to cram biology terms before tomorrow\'s quiz.', 2),
+      {
+        id: 'msg-intelligent-routing-assistant-flashcards',
+        role: 'assistant',
+        timestamp: 3,
+        contentParts: [flashcardRouteReceipt],
+      },
+      createTextMessage('msg-intelligent-routing-user-drawing', 'user', 'Help me sketch a poster idea for Earth Day.', 4),
+      {
+        id: 'msg-intelligent-routing-assistant-drawing',
+        role: 'assistant',
+        timestamp: 5,
+        contentParts: [drawingRouteReceipt],
+      },
+      createTextMessage(
+        'msg-intelligent-routing-user-weather',
+        'user',
+        'Do I need an umbrella before school tomorrow in Chicago?',
+        6
+      ),
+      {
+        id: 'msg-intelligent-routing-assistant-weather',
+        role: 'assistant',
+        timestamp: 7,
+        contentParts: [weatherRouteReceipt],
+      },
+      createTextMessage(
+        'msg-intelligent-routing-user-clarify',
+        'user',
+        'Help me sketch a weather-themed poster.',
+        8
+      ),
+      {
+        id: 'msg-intelligent-routing-assistant-clarify',
+        role: 'assistant',
+        timestamp: 9,
+        contentParts: [clarifyReceipt],
+      },
+    ],
+  }
+}
+
 export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
   const historyAndPreview = buildChatBridgeHistoryAndPreviewSessionFixture()
 
@@ -2646,6 +2790,33 @@ export function getChatBridgeLiveSeedFixtures(): ChatBridgeLiveSeedFixture[] {
         },
       ],
       sessionInput: buildChatBridgeRuntimeAndRouteReceiptSessionFixture(),
+    },
+    {
+      id: 'intelligent-routing',
+      name: `${CHATBRIDGE_LIVE_SEED_PREFIX} Intelligent routing`,
+      description:
+        'Seeds semantic reviewed-app route receipts so you can verify loose study, drawing, and weather prompts map to the correct app while ambiguous prompts still ask for clarification.',
+      fixtureRole: 'platform-regression',
+      smokeSupport: 'supported',
+      coverage: ['Semantic reviewed-app routing', 'Loose natural-language intent', 'Explainable clarify fallback'],
+      auditSteps: [
+        {
+          action: 'Open the seeded Intelligent routing session and inspect the first three assistant route receipts.',
+          expected:
+            'Loose natural-language prompts route to Flashcard Studio, Drawing Kit, and Weather Dashboard even though none of the prompts explicitly names the app.',
+        },
+        {
+          action: 'Compare the receipt titles and summaries for the study, drawing, and umbrella prompts.',
+          expected:
+            'Each receipt stays inline in chat, shows the correct app readiness title, and describes the app as the best reviewed fit instead of relying on exact-name matching.',
+        },
+        {
+          action: 'Inspect the final `Help me sketch a weather-themed poster.` receipt.',
+          expected:
+            'The host asks you to choose the next step instead of guessing between Drawing Kit and Weather Dashboard.',
+        },
+      ],
+      sessionInput: buildChatBridgeIntelligentRoutingSessionFixture(),
     },
     {
       id: 'history-and-preview',

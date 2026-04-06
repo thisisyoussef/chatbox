@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDrawingKitAppSnapshot, type ChatBridgeRouteDecision } from '@shared/chatbridge'
 import type { CallChatCompletionOptions, ModelInterface } from '@shared/models/types'
 import type { Message, StreamTextResult } from '@shared/types'
-import { createReviewedSingleAppToolSet } from '../chatbridge/single-app-tools'
+import { createIntelligentReviewedSingleAppToolSet } from '../chatbridge/single-app-tools'
 
 const traceEndMock = vi.fn(async () => undefined)
 const traceStartRunMock = vi.fn(async () => ({
@@ -59,7 +59,7 @@ vi.mock('./toolsets/web-search', () => ({
 }))
 
 vi.mock('../chatbridge/single-app-tools', () => ({
-  createReviewedSingleAppToolSet: vi.fn(() => ({
+  createIntelligentReviewedSingleAppToolSet: vi.fn(async () => ({
     routeDecision: {
       schemaVersion: 2,
       hostRuntime: 'desktop-electron',
@@ -74,6 +74,8 @@ vi.mock('../chatbridge/single-app-tools', () => ({
       promptText: '',
     },
     selectionSource: 'none',
+    routingStrategy: 'lexical',
+    semanticClassifierStatus: 'not-attempted',
     tools: {},
   })),
 }))
@@ -218,13 +220,15 @@ describe('streamText tracing metadata', () => {
   }, 40000)
 
   it('injects a live clarify route artifact when the reviewed router needs confirmation', async () => {
-    vi.mocked(createReviewedSingleAppToolSet).mockReturnValue({
+    vi.mocked(createIntelligentReviewedSingleAppToolSet).mockResolvedValue({
       routeDecision: createRouteDecision('clarify'),
       selection: {
         status: 'chat-only',
         promptText: 'Help me with this',
       },
       selectionSource: 'none',
+      routingStrategy: 'lexical',
+      semanticClassifierStatus: 'not-attempted',
       tools: {},
     })
     const { streamText } = await import('./stream-text')
@@ -268,7 +272,7 @@ describe('streamText tracing metadata', () => {
   })
 
   it('injects a live refusal route artifact when the reviewed router keeps the request in chat', async () => {
-    vi.mocked(createReviewedSingleAppToolSet).mockReturnValue({
+    vi.mocked(createIntelligentReviewedSingleAppToolSet).mockResolvedValue({
       routeDecision: createRouteDecision('refuse', {
         prompt: 'What should I cook for dinner tonight?',
       }),
@@ -277,6 +281,8 @@ describe('streamText tracing metadata', () => {
         promptText: 'What should I cook for dinner tonight?',
       },
       selectionSource: 'none',
+      routingStrategy: 'lexical',
+      semanticClassifierStatus: 'not-attempted',
       tools: {},
     })
     const { streamText } = await import('./stream-text')

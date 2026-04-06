@@ -445,8 +445,9 @@ export async function streamText(
       }
     }
 
-    const governor = prepareChatBridgeExecutionGovernor({
+    const governor = await prepareChatBridgeExecutionGovernor({
       messages: params.messages,
+      model,
       baseTools: tools,
       modelSupportsToolUse: model.isSupportToolUse(),
       sessionId,

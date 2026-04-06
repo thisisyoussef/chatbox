@@ -233,6 +233,150 @@ describe('resolveReviewedAppRouteDecision', () => {
     expect(decision.matches.map((match) => match.appId)).toEqual(['debate-arena'])
   })
 
+  it('can upgrade a low-lexical study request into a semantic invoke for Flashcard Studio', () => {
+    const decision = resolveReviewedAppRouteDecision(
+      [
+        createCandidate({
+          manifest: {
+            appId: 'flashcard-studio',
+            name: 'Flashcard Studio',
+            uiEntry: 'https://apps.example.com/flashcard-studio',
+            authMode: 'oauth',
+            permissions: [
+              {
+                id: 'drive.read',
+                resource: 'drive',
+                access: 'read',
+                required: true,
+                purpose: 'Reopen saved flashcard decks.',
+              },
+            ],
+            toolSchemas: [
+              {
+                name: 'flashcard_studio_open',
+                title: 'Open Flashcard Studio',
+                description: 'Create, edit, study, and review flashcards in a deck.',
+                schemaVersion: 1,
+                inputSchema: {
+                  type: 'object',
+                  properties: {},
+                },
+              },
+            ],
+            supportedEvents: ['host.init', 'app.ready', 'app.state', 'app.complete', 'app.requestAuth'],
+            safetyMetadata: {
+              reviewed: true,
+              sandbox: 'hosted-iframe',
+              handlesStudentData: true,
+              requiresTeacherApproval: false,
+            },
+          },
+        }),
+      ],
+      'I need to cram biology terms before tomorrow\'s quiz.',
+      {
+        hostRuntime: 'desktop-electron',
+        semanticHint: {
+          decision: 'invoke',
+          selectedAppId: 'flashcard-studio',
+          alternateAppIds: [],
+          confidence: 'high',
+          rationale: 'The user wants to study before a quiz.',
+        },
+      }
+    )
+
+    expect(decision).toMatchObject({
+      kind: 'invoke',
+      reasonCode: 'semantic-app-match',
+      selectedAppId: 'flashcard-studio',
+    })
+    expect(decision.matches[0]).toMatchObject({
+      appId: 'flashcard-studio',
+    })
+  })
+
+  it('can preserve a semantic clarify between Drawing Kit and Weather Dashboard', () => {
+    const decision = resolveReviewedAppRouteDecision(
+      [
+        createCandidate({
+          manifest: {
+            appId: 'drawing-kit',
+            name: 'Drawing Kit',
+            uiEntry: 'https://apps.example.com/drawing-kit',
+            authMode: 'none',
+            permissions: [],
+            toolSchemas: [
+              {
+                name: 'drawing_kit_open',
+                title: 'Open Drawing Kit',
+                description: 'Sketch posters, doodles, and diagrams in-thread.',
+                schemaVersion: 1,
+                inputSchema: {
+                  type: 'object',
+                  properties: {},
+                },
+              },
+            ],
+            supportedEvents: ['host.init', 'app.ready', 'app.state', 'app.complete'],
+            safetyMetadata: {
+              reviewed: true,
+              sandbox: 'hosted-iframe',
+              handlesStudentData: false,
+              requiresTeacherApproval: false,
+            },
+          },
+        }),
+        createCandidate({
+          manifest: {
+            appId: 'weather-dashboard',
+            name: 'Weather Dashboard',
+            uiEntry: 'https://apps.example.com/weather-dashboard',
+            authMode: 'none',
+            permissions: [],
+            toolSchemas: [
+              {
+                name: 'weather_dashboard_open',
+                title: 'Open Weather Dashboard',
+                description: 'Inspect current conditions and forecast changes.',
+                schemaVersion: 1,
+                inputSchema: {
+                  type: 'object',
+                  properties: {},
+                },
+              },
+            ],
+            supportedEvents: ['host.init', 'app.ready', 'app.state', 'app.complete'],
+            safetyMetadata: {
+              reviewed: true,
+              sandbox: 'hosted-iframe',
+              handlesStudentData: false,
+              requiresTeacherApproval: false,
+            },
+          },
+        }),
+      ],
+      'Help me sketch a weather-themed poster.',
+      {
+        hostRuntime: 'desktop-electron',
+        semanticHint: {
+          decision: 'clarify',
+          selectedAppId: 'drawing-kit',
+          alternateAppIds: ['weather-dashboard'],
+          confidence: 'medium',
+          rationale: 'The user could be asking for a visual sketch or a forecast view.',
+        },
+      }
+    )
+
+    expect(decision).toMatchObject({
+      kind: 'clarify',
+      reasonCode: 'ambiguous-match',
+      selectedAppId: 'drawing-kit',
+    })
+    expect(decision.matches.map((match) => match.appId)).toEqual(['drawing-kit', 'weather-dashboard'])
+  })
+
   it('can build a host-owned message artifact from the routing decision', () => {
     const decision = resolveReviewedAppRouteDecision(
       [createCandidate()],

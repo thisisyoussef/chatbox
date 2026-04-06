@@ -43,10 +43,22 @@ function getLatestUserPrompt(messages: ModelMessage[]) {
   return typeof latestUserMessage.content === 'string' ? latestUserMessage.content : JSON.stringify(latestUserMessage.content)
 }
 
-function createToolCallingModelStub(selectTool: (prompt: string) => { toolName: string; args: Record<string, unknown> }) {
+function createToolCallingModelStub(
+  selectTool: (prompt: string) => { toolName: string; args: Record<string, unknown> },
+  semanticRoute?: (prompt: string) => Record<string, unknown>
+) {
   const chat = vi.fn(
     async (messages: ModelMessage[], options: CallChatCompletionOptions): Promise<StreamTextResult> => {
       const prompt = getLatestUserPrompt(messages)
+
+      if (!options.tools || Object.keys(options.tools).length === 0) {
+        return {
+          contentParts: semanticRoute
+            ? [{ type: 'text', text: JSON.stringify(semanticRoute(prompt)) }]
+            : [{ type: 'text', text: 'semantic routing unavailable' }],
+        }
+      }
+
       const selectedTool = selectTool(prompt)
       const tool = options.tools?.[selectedTool.toolName]
 
@@ -142,7 +154,7 @@ describe('ChatBridge live reviewed app invocation path', () => {
       })
 
       expect(chat).toHaveBeenCalledOnce()
-      expect(Object.keys(chat.mock.calls[0]?.[1]?.tools ?? {})).toEqual(['drawing_kit_open'])
+      expect(Object.keys(chat.mock.calls.at(-1)?.[1]?.tools ?? {})).toEqual(['drawing_kit_open'])
       expect(findAppPart(result.result.contentParts)).toMatchObject({
         appId: 'drawing-kit',
         appName: 'Drawing Kit',
@@ -180,7 +192,7 @@ describe('ChatBridge live reviewed app invocation path', () => {
       })
 
       expect(chat).toHaveBeenCalledOnce()
-      expect(Object.keys(chat.mock.calls[0]?.[1]?.tools ?? {})).toEqual(['weather_dashboard_open'])
+      expect(Object.keys(chat.mock.calls.at(-1)?.[1]?.tools ?? {})).toEqual(['weather_dashboard_open'])
       const weatherPart = findAppPart(result.result.contentParts)
       expect(weatherPart).toMatchObject({
         appId: 'weather-dashboard',
@@ -223,7 +235,7 @@ describe('ChatBridge live reviewed app invocation path', () => {
       })
 
       expect(chat).toHaveBeenCalledOnce()
-      expect(Object.keys(chat.mock.calls[0]?.[1]?.tools ?? {})).toEqual(['flashcard_studio_open'])
+      expect(Object.keys(chat.mock.calls.at(-1)?.[1]?.tools ?? {})).toEqual(['flashcard_studio_open'])
       expect(findAppPart(result.result.contentParts)).toMatchObject({
         appId: 'flashcard-studio',
         appName: 'Flashcard Studio',
@@ -261,8 +273,8 @@ describe('ChatBridge live reviewed app invocation path', () => {
         onResultChangeWithCancel: vi.fn(),
       })
 
-      expect(chat).toHaveBeenCalledOnce()
-      expect(Object.keys(chat.mock.calls[0]?.[1]?.tools ?? {})).toEqual(['chess_prepare_session'])
+      expect(chat).toHaveBeenCalledTimes(2)
+      expect(Object.keys(chat.mock.calls.at(-1)?.[1]?.tools ?? {})).toEqual(['chess_prepare_session'])
       const chessPart = findAppPart(result.result.contentParts)
       expect(chessPart).toMatchObject({
         appId: 'chess',
@@ -282,5 +294,86 @@ describe('ChatBridge live reviewed app invocation path', () => {
           }),
         })
       )
+    }))
+
+  it('routes a non-explicit study request into Flashcard Studio through the semantic reviewed-app path', () =>
+    traceScenario('routes a non-explicit study request into Flashcard Studio through the semantic reviewed-app path', async () => {
+      const prompt = 'I need to cram biology terms before tomorrow\'s quiz.'
+      const { chat, model } = createToolCallingModelStub(
+        () => ({
+          toolName: 'flashcard_studio_open',
+          args: {
+            request: prompt,
+          },
+        }),
+        () => ({
+          decision: 'invoke',
+          selectedAppId: 'flashcard-studio',
+          alternateAppIds: [],
+          confidence: 'high',
+          rationale: 'The user wants to study and review knowledge before a quiz.',
+        })
+      )
+
+      const result = await streamText(model, {
+        sessionId: 'session-sc-006-semantic-flashcards',
+        messages: [createTextMessage('msg-semantic-flashcards-user', 'user', prompt, 1)],
+        onResultChangeWithCancel: vi.fn(),
+      })
+
+      expect(chat).toHaveBeenCalledTimes(2)
+      expect(Object.keys(chat.mock.calls.at(-1)?.[1]?.tools ?? {})).toEqual(['flashcard_studio_open'])
+      expect(findAppPart(result.result.contentParts)).toMatchObject({
+        appId: 'flashcard-studio',
+        appName: 'Flashcard Studio',
+        lifecycle: 'launching',
+      })
+      expect(langsmithMocks.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'chatbridge.routing.reviewed-app-decision',
+          outputs: expect.objectContaining({
+            decisionKind: 'invoke',
+            reasonCode: 'semantic-app-match',
+            selectedAppId: 'flashcard-studio',
+            routingStrategy: 'semantic',
+            semanticClassifierStatus: 'accepted',
+          }),
+        })
+      )
+    }))
+
+  it('routes a non-explicit weather request into Weather Dashboard through the semantic reviewed-app path', () =>
+    traceScenario('routes a non-explicit weather request into Weather Dashboard through the semantic reviewed-app path', async () => {
+      const prompt = 'Do I need an umbrella before school tomorrow in Chicago?'
+      const { chat, model } = createToolCallingModelStub(
+        () => ({
+          toolName: 'weather_dashboard_open',
+          args: {
+            request: prompt,
+            location: 'Chicago',
+          },
+        }),
+        () => ({
+          decision: 'invoke',
+          selectedAppId: 'weather-dashboard',
+          alternateAppIds: [],
+          confidence: 'high',
+          rationale: 'The user is asking for weather conditions and rain risk.',
+        })
+      )
+
+      const result = await streamText(model, {
+        sessionId: 'session-sc-002a-semantic-weather',
+        messages: [createTextMessage('msg-semantic-weather-user', 'user', prompt, 1)],
+        onResultChangeWithCancel: vi.fn(),
+      })
+
+      expect(chat).toHaveBeenCalledTimes(2)
+      expect(Object.keys(chat.mock.calls.at(-1)?.[1]?.tools ?? {})).toEqual(['weather_dashboard_open'])
+      expect(findAppPart(result.result.contentParts)).toMatchObject({
+        appId: 'weather-dashboard',
+        appName: 'Weather Dashboard',
+        lifecycle: 'launching',
+      })
     }))
 })

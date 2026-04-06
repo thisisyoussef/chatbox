@@ -52,6 +52,7 @@ export type ChatBridgeRouteDecisionKind = z.infer<typeof ChatBridgeRouteDecision
 
 export const ChatBridgeRouteDecisionReasonCodeSchema = z.enum([
   'explicit-app-match',
+  'semantic-app-match',
   'needs-confirmation',
   'ambiguous-match',
   'runtime-unsupported',
@@ -60,6 +61,21 @@ export const ChatBridgeRouteDecisionReasonCodeSchema = z.enum([
   'invalid-prompt',
 ])
 export type ChatBridgeRouteDecisionReasonCode = z.infer<typeof ChatBridgeRouteDecisionReasonCodeSchema>
+
+export const ChatBridgeSemanticRouteConfidenceSchema = z.enum(['high', 'medium', 'low'])
+export type ChatBridgeSemanticRouteConfidence = z.infer<typeof ChatBridgeSemanticRouteConfidenceSchema>
+
+export const ChatBridgeSemanticRouteDecisionHintSchema = z
+  .object({
+    decision: z.enum(['invoke', 'clarify', 'refuse']),
+    selectedAppId: z.string().min(1).optional(),
+    alternateAppIds: z.array(z.string().min(1)).default([]),
+    confidence: ChatBridgeSemanticRouteConfidenceSchema,
+    rationale: z.string().min(1),
+  })
+  .strict()
+
+export type ChatBridgeSemanticRouteDecisionHint = z.infer<typeof ChatBridgeSemanticRouteDecisionHintSchema>
 
 export const ChatBridgeRouteArtifactStatusSchema = z.enum(['pending', 'launch-requested', 'chat-only', 'launch-failed'])
 
@@ -253,6 +269,44 @@ function getSelectedMatch(
   return matches.find((match) => match.appId === selectedAppId) ?? null
 }
 
+function boostSemanticMatch(
+  match: ChatBridgeRouteCandidateMatch,
+  semanticHint: ChatBridgeSemanticRouteDecisionHint
+): ChatBridgeRouteCandidateMatch {
+  const isSelected = semanticHint.selectedAppId === match.appId
+  const isAlternate = semanticHint.alternateAppIds.includes(match.appId)
+  const semanticBoost =
+    semanticHint.decision === 'invoke' && semanticHint.confidence === 'high'
+      ? isSelected
+        ? 8
+        : isAlternate
+          ? 4
+          : 0
+      : isSelected
+        ? 5
+        : isAlternate
+          ? 3
+          : 0
+
+  return {
+    ...match,
+    score: match.score + semanticBoost,
+  }
+}
+
+function createSemanticMatches(
+  allEligibleMatches: ChatBridgeRouteCandidateMatch[],
+  semanticHint: ChatBridgeSemanticRouteDecisionHint
+): ChatBridgeRouteCandidateMatch[] {
+  const emphasizedAppIds = new Set(
+    [semanticHint.selectedAppId, ...semanticHint.alternateAppIds].filter((value): value is string => Boolean(value))
+  )
+
+  return sortMatches(allEligibleMatches.map((match) => boostSemanticMatch(match, semanticHint)))
+    .filter((match) => match.score >= MIN_RELEVANT_ROUTE_SCORE || emphasizedAppIds.has(match.appId))
+    .slice(0, 3)
+}
+
 function buildClarifySummary(
   selected: ChatBridgeRouteCandidateMatch,
   alternates: ChatBridgeRouteCandidateMatch[]
@@ -301,6 +355,7 @@ export function resolveReviewedAppRouteDecision(
   options: {
     excluded?: ReviewedAppEligibilityDecision[]
     hostRuntime?: ChatBridgeHostRuntime
+    semanticHint?: ChatBridgeSemanticRouteDecisionHint
   } = {}
 ): ChatBridgeRouteDecision {
   const prompt = typeof promptInput === 'string' ? normalizeWhitespace(promptInput) : ''
@@ -319,9 +374,8 @@ export function resolveReviewedAppRouteDecision(
   }
 
   const promptTokens = tokenize(prompt)
-  const eligibleMatches = sortMatches(
-    candidates.map((candidate) => scoreReviewedAppCandidate(prompt, promptTokens, candidate))
-  ).slice(0, 3)
+  const allEligibleMatches = sortMatches(candidates.map((candidate) => scoreReviewedAppCandidate(prompt, promptTokens, candidate)))
+  const eligibleMatches = allEligibleMatches.slice(0, 3)
   const runtimeUnsupportedMatches = sortMatches(
     (options.excluded ?? [])
       .map((decision) => getRuntimeUnsupportedMatch(prompt, promptTokens, decision))
@@ -355,6 +409,48 @@ export function resolveReviewedAppRouteDecision(
       selectedAppId: topCombinedMatch.appId,
       matches: combinedRelevantMatches,
       runtimeBlock,
+    }
+  }
+
+  if (options.semanticHint) {
+    const selectedSemanticMatch = getSelectedMatch(allEligibleMatches, options.semanticHint.selectedAppId)
+    const semanticMatches = createSemanticMatches(allEligibleMatches, options.semanticHint)
+    const selectedSemanticDisplayMatch = getSelectedMatch(semanticMatches, options.semanticHint.selectedAppId)
+    const semanticAlternates = semanticMatches.filter((match) => match.appId !== options.semanticHint?.selectedAppId)
+
+    if (
+      options.semanticHint.decision === 'invoke' &&
+      options.semanticHint.confidence === 'high' &&
+      selectedSemanticMatch &&
+      selectedSemanticDisplayMatch
+    ) {
+      return {
+        schemaVersion: CHATBRIDGE_ROUTE_DECISION_SCHEMA_VERSION,
+        hostRuntime,
+        kind: 'invoke',
+        reasonCode: 'semantic-app-match',
+        prompt,
+        summary: `The host identified ${selectedSemanticDisplayMatch.appName} as the best reviewed-app fit for this request.`,
+        selectedAppId: selectedSemanticDisplayMatch.appId,
+        matches: semanticMatches,
+      }
+    }
+
+    if (
+      selectedSemanticMatch &&
+      selectedSemanticDisplayMatch &&
+      (options.semanticHint.decision === 'clarify' || options.semanticHint.decision === 'invoke')
+    ) {
+      return {
+        schemaVersion: CHATBRIDGE_ROUTE_DECISION_SCHEMA_VERSION,
+        hostRuntime,
+        kind: 'clarify',
+        reasonCode: semanticAlternates.length > 0 ? 'ambiguous-match' : 'needs-confirmation',
+        prompt,
+        summary: buildClarifySummary(selectedSemanticDisplayMatch, semanticAlternates),
+        selectedAppId: selectedSemanticDisplayMatch.appId,
+        matches: semanticMatches,
+      }
     }
   }
 
