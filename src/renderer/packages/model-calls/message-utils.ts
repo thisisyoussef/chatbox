@@ -12,6 +12,42 @@ import { compact } from 'lodash'
 import { createModelDependencies } from '@/adapters'
 import { cloneMessage, getMessageText } from '@/utils/message'
 
+function encodeUtf8ToBase64(value: string) {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+
+function normalizeStoredImageDataForModel(imageData: string) {
+  const mediaType = imageData.match(/^data:([^;,]+)/)?.[1] || 'image/png'
+  if (!imageData.startsWith('data:')) {
+    return { data: imageData, mediaType }
+  }
+
+  const commaIndex = imageData.indexOf(',')
+  if (commaIndex < 0) {
+    return { data: imageData, mediaType }
+  }
+
+  const header = imageData.slice(0, commaIndex)
+  const payload = imageData.slice(commaIndex + 1)
+  if (/;base64(?:;|$)/i.test(header)) {
+    return { data: payload, mediaType }
+  }
+
+  let decodedPayload = payload
+  try {
+    decodedPayload = decodeURIComponent(payload)
+  } catch {
+    // Keep the raw payload when it is not percent-encoded.
+  }
+
+  return { data: encodeUtf8ToBase64(decodedPayload), mediaType }
+}
+
 async function convertContentParts<T extends TextPart | ImagePart | FilePart>(
   contentParts: MessageContentParts,
   imageType: 'image' | 'file',
@@ -33,13 +69,12 @@ async function convertContentParts<T extends TextPart | ImagePart | FilePart>(
               console.warn(`Image not found for storage key: ${c.storageKey}`)
               return null
             }
-            const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, '')
-            const mediaType = imageData.match(/^data:([^;]+)/)?.[1] || 'image/png'
+            const { data, mediaType } = normalizeStoredImageDataForModel(imageData)
 
             if (imageType === 'image') {
               return {
                 type: 'image',
-                image: base64Data,
+                image: data,
                 mediaType,
                 ...(c.detail
                   ? {
@@ -54,7 +89,7 @@ async function convertContentParts<T extends TextPart | ImagePart | FilePart>(
             } else {
               return {
                 type: 'file',
-                data: base64Data,
+                data,
                 mediaType,
               } as T
             }
@@ -96,12 +131,11 @@ async function convertAssistantContentParts(
           console.warn(`Image not found for storage key: ${part.storageKey}`)
           continue
         }
-        const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, '')
-        const mediaType = imageData.match(/^data:([^;]+)/)?.[1] || 'image/png'
+        const { data, mediaType } = normalizeStoredImageDataForModel(imageData)
 
         results.push({
           type: 'file',
-          data: base64Data,
+          data,
           mediaType,
         })
       } catch (error) {
@@ -131,11 +165,10 @@ async function convertAssistantContentParts(
             continue
           }
 
-          const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, '')
-          const mediaType = imageData.match(/^data:([^;]+)/)?.[1] || 'image/png'
+          const { data, mediaType } = normalizeStoredImageDataForModel(imageData)
           results.push({
             type: 'file',
-            data: base64Data,
+            data,
             mediaType,
           })
         } catch (error) {
