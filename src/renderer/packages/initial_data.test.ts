@@ -19,6 +19,7 @@ describe('chatbridge smoke inspection snapshot', () => {
       'weather-dashboard',
       'chess-runtime',
       'runtime-and-route-receipt',
+      'intelligent-routing',
       'history-and-preview',
     ])
     expect(snapshot.presetSessions.map((session) => session.fixtureId)).toEqual([
@@ -34,6 +35,7 @@ describe('chatbridge smoke inspection snapshot', () => {
       'weather-dashboard',
       'chess-runtime',
       'runtime-and-route-receipt',
+      'intelligent-routing',
       'history-and-preview',
     ])
     expect(snapshot.presetSessions.every((session) => session.locales.includes('en'))).toBe(true)
@@ -69,6 +71,10 @@ describe('chatbridge smoke inspection snapshot', () => {
       smokeSupport: 'supported',
     })
     expect(snapshot.presetSessions.find((session) => session.fixtureId === 'runtime-and-route-receipt')).toMatchObject({
+      fixtureRole: 'platform-regression',
+      smokeSupport: 'supported',
+    })
+    expect(snapshot.presetSessions.find((session) => session.fixtureId === 'intelligent-routing')).toMatchObject({
       fixtureRole: 'platform-regression',
       smokeSupport: 'supported',
     })

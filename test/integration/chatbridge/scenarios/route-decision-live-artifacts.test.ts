@@ -16,7 +16,7 @@ const langsmithMocks = vi.hoisted(() => ({
 }))
 
 const routeDecisionMocks = vi.hoisted(() => ({
-  createReviewedSingleAppToolSet: vi.fn(),
+  createIntelligentReviewedSingleAppToolSet: vi.fn(),
 }))
 
 vi.mock('@/adapters/langsmith', () => ({
@@ -27,7 +27,7 @@ vi.mock('@/adapters/langsmith', () => ({
 }))
 
 vi.mock('@/packages/chatbridge/single-app-tools', () => ({
-  createReviewedSingleAppToolSet: routeDecisionMocks.createReviewedSingleAppToolSet,
+  createIntelligentReviewedSingleAppToolSet: routeDecisionMocks.createIntelligentReviewedSingleAppToolSet,
 }))
 
 import { streamText } from '@/packages/model-calls/stream-text'
@@ -120,13 +120,15 @@ describe('ChatBridge live route decision artifacts', () => {
 
   it('injects a live clarify artifact into the assistant timeline when the reviewed route needs confirmation', () =>
     traceScenario('injects a live clarify artifact into the assistant timeline when the reviewed route needs confirmation', async () => {
-      routeDecisionMocks.createReviewedSingleAppToolSet.mockReturnValue({
+      routeDecisionMocks.createIntelligentReviewedSingleAppToolSet.mockResolvedValue({
         routeDecision: createRouteDecision('clarify'),
         selection: {
           status: 'chat-only',
           promptText: 'Help me with this request.',
         },
         selectionSource: 'none',
+        routingStrategy: 'lexical',
+        semanticClassifierStatus: 'not-attempted',
         tools: {},
       })
       const { chat, model } = createModelStub()
@@ -151,7 +153,7 @@ describe('ChatBridge live route decision artifacts', () => {
 
   it('injects a live refusal artifact into the assistant timeline when the reviewed route stays in chat', () =>
     traceScenario('injects a live refusal artifact into the assistant timeline when the reviewed route stays in chat', async () => {
-      routeDecisionMocks.createReviewedSingleAppToolSet.mockReturnValue({
+      routeDecisionMocks.createIntelligentReviewedSingleAppToolSet.mockResolvedValue({
         routeDecision: createRouteDecision('refuse', {
           prompt: 'What should I cook for dinner tonight?',
         }),
@@ -160,6 +162,8 @@ describe('ChatBridge live route decision artifacts', () => {
           promptText: 'What should I cook for dinner tonight?',
         },
         selectionSource: 'none',
+        routingStrategy: 'lexical',
+        semanticClassifierStatus: 'not-attempted',
         tools: {},
       })
       const { chat, model } = createModelStub()

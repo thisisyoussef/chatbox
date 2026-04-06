@@ -12,6 +12,7 @@ import {
   buildChatBridgePlatformRecoverySessionFixture,
   buildChatBridgeChessRuntimeSessionFixture,
   buildChatBridgeHistoryAndPreviewSessionFixture,
+  buildChatBridgeIntelligentRoutingSessionFixture,
   buildChatBridgeLifecycleTourSessionFixture,
   buildPartialLifecycleSessionFixture,
   getChatBridgeLiveSeedFixtures,
@@ -271,6 +272,29 @@ describe('chatbridge live seed fixtures', () => {
     expect(fixture.chatBridgeAppRecords?.events).toHaveLength(2)
   })
 
+  it('builds an intelligent routing fixture with semantic invoke receipts and an ambiguous clarify receipt', () => {
+    const fixture = buildChatBridgeIntelligentRoutingSessionFixture()
+    const appParts = fixture.messages
+      .flatMap((message) => message.contentParts)
+      .filter((part): part is Extract<(typeof fixture.messages)[number]['contentParts'][number], { type: 'app' }> => part.type === 'app')
+    const semanticReasonCodes = appParts.slice(0, 3).map(
+      (part) => (part.values?.chatbridgeRouteDecision as { reasonCode?: string } | undefined)?.reasonCode
+    )
+
+    expect(appParts).toHaveLength(4)
+    expect(appParts.map((part) => part.title)).toEqual([
+      'Flashcard Studio is ready',
+      'Drawing Kit is ready',
+      'Weather Dashboard is ready',
+      'Choose the next step',
+    ])
+    expect(semanticReasonCodes).toEqual([
+      'semantic-app-match',
+      'semantic-app-match',
+      'semantic-app-match',
+    ])
+  })
+
   it('publishes the live seed catalog with stable scenario ids', () => {
     const fixtures = getChatBridgeLiveSeedFixtures()
 
@@ -287,6 +311,7 @@ describe('chatbridge live seed fixtures', () => {
       'weather-dashboard',
       'chess-runtime',
       'runtime-and-route-receipt',
+      'intelligent-routing',
       'history-and-preview',
     ])
     expect(fixtures.find((fixture) => fixture.id === 'drawing-kit-doodle-dare')).toMatchObject({
@@ -318,6 +343,10 @@ describe('chatbridge live seed fixtures', () => {
       smokeSupport: 'supported',
     })
     expect(fixtures.find((fixture) => fixture.id === 'runtime-and-route-receipt')).toMatchObject({
+      fixtureRole: 'platform-regression',
+      smokeSupport: 'supported',
+    })
+    expect(fixtures.find((fixture) => fixture.id === 'intelligent-routing')).toMatchObject({
       fixtureRole: 'platform-regression',
       smokeSupport: 'supported',
     })

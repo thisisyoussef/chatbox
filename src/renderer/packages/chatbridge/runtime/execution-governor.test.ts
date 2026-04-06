@@ -4,7 +4,8 @@ import type { ToolSet } from 'ai'
 import { tool } from 'ai'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { Message, MessageInfoPart } from '@shared/types'
+import type { ModelInterface } from '@shared/models/types'
+import type { Message, MessageInfoPart, StreamTextResult } from '@shared/types'
 import { prepareChatBridgeExecutionGovernor, normalizeChatBridgeExecutionGovernorContentParts } from './execution-governor'
 
 function createTextMessage(id: string, text: string): Message {
@@ -28,18 +29,36 @@ function createBaseTools(): ToolSet {
   }
 }
 
+function createRoutingModel(responseText = ''): ModelInterface {
+  const contentParts: StreamTextResult['contentParts'] = responseText ? [{ type: 'text', text: responseText }] : []
+
+  return {
+    name: 'Routing Governor Test Model',
+    modelId: 'routing-governor-test-model',
+    isSupportVision: () => true,
+    isSupportToolUse: () => true,
+    isSupportSystemMessage: () => true,
+    chat: vi.fn(async () => ({
+      contentParts,
+    })),
+    chatStream: vi.fn(async function* () {}),
+    paint: vi.fn(async () => []),
+  }
+}
+
 describe('ChatBridge renderer execution governor', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('keeps tool-use-disabled turns bounded while still returning the wrapped base tool set', () => {
+  it('keeps tool-use-disabled turns bounded while still returning the wrapped base tool set', async () => {
     const traceAdapter = {
       recordEvent: vi.fn(async () => undefined),
     }
 
-    const result = prepareChatBridgeExecutionGovernor({
+    const result = await prepareChatBridgeExecutionGovernor({
       messages: [createTextMessage('msg-no-tools', 'hello there')],
+      model: createRoutingModel(),
       baseTools: createBaseTools(),
       modelSupportsToolUse: false,
       sessionId: 'session-no-tools',
@@ -56,13 +75,14 @@ describe('ChatBridge renderer execution governor', () => {
     expect(traceAdapter.recordEvent).not.toHaveBeenCalled()
   })
 
-  it('prepares an invoke resolution for an explicit Drawing Kit request and emits the stable route-decision trace event', () => {
+  it('prepares an invoke resolution for an explicit Drawing Kit request and emits the stable route-decision trace event', async () => {
     const traceAdapter = {
       recordEvent: vi.fn(async () => undefined),
     }
 
-    const result = prepareChatBridgeExecutionGovernor({
+    const result = await prepareChatBridgeExecutionGovernor({
       messages: [createTextMessage('msg-drawing', 'Open Drawing Kit and start a sticky-note doodle dare.')],
+      model: createRoutingModel(),
       baseTools: {},
       modelSupportsToolUse: true,
       sessionId: 'session-drawing',
@@ -81,11 +101,15 @@ describe('ChatBridge renderer execution governor', () => {
         selectedAppId: 'drawing-kit',
       },
       selectionSource: 'route-decision',
+      routingStrategy: 'lexical',
+      semanticClassifierStatus: 'not-attempted',
       toolNames: ['drawing_kit_open'],
       tracePayload: {
         decisionKind: 'invoke',
         selectedAppId: 'drawing-kit',
         selectionSource: 'route-decision',
+        routingStrategy: 'lexical',
+        semanticClassifierStatus: 'not-attempted',
         toolNames: ['drawing_kit_open'],
         artifactInserted: false,
         artifactKind: null,
@@ -99,19 +123,30 @@ describe('ChatBridge renderer execution governor', () => {
           decisionKind: 'invoke',
           selectedAppId: 'drawing-kit',
           selectionSource: 'route-decision',
+          routingStrategy: 'lexical',
+          semanticClassifierStatus: 'not-attempted',
           toolNames: ['drawing_kit_open'],
         }),
       })
     )
   })
 
-  it('prepares a clarify artifact for an ambiguous active-app request without mounting reviewed tools', () => {
+  it('prepares a clarify artifact for an ambiguous active-app request without mounting reviewed tools', async () => {
     const traceAdapter = {
       recordEvent: vi.fn(async () => undefined),
     }
 
-    const result = prepareChatBridgeExecutionGovernor({
+    const result = await prepareChatBridgeExecutionGovernor({
       messages: [createTextMessage('msg-clarify', 'Help me sketch a weather-themed poster.')],
+      model: createRoutingModel(
+        JSON.stringify({
+          decision: 'clarify',
+          selectedAppId: 'drawing-kit',
+          alternateAppIds: ['weather-dashboard'],
+          confidence: 'medium',
+          rationale: 'The request could fit a drawing surface or a weather view.',
+        })
+      ),
       baseTools: {},
       modelSupportsToolUse: true,
       sessionId: 'session-clarify',
@@ -136,25 +171,30 @@ describe('ChatBridge renderer execution governor', () => {
       routeDecision: {
         kind: 'clarify',
       },
+      routingStrategy: 'semantic',
+      semanticClassifierStatus: 'accepted',
       toolNames: [],
       tracePayload: {
         decisionKind: 'clarify',
+        routingStrategy: 'semantic',
+        semanticClassifierStatus: 'accepted',
         artifactInserted: true,
         artifactKind: 'clarify',
       },
     })
   })
 
-  it('keeps route-decision trace failures non-fatal for the governor preparation step', () => {
+  it('keeps route-decision trace failures non-fatal for the governor preparation step', async () => {
     const traceAdapter = {
       recordEvent: vi.fn(async () => {
         throw new Error('LangSmith unavailable')
       }),
     }
 
-    expect(() =>
+    await expect(
       prepareChatBridgeExecutionGovernor({
         messages: [createTextMessage('msg-refuse', 'What should I cook for dinner tonight?')],
+        model: createRoutingModel(),
         baseTools: {},
         modelSupportsToolUse: true,
         sessionId: 'session-refuse',
@@ -164,16 +204,17 @@ describe('ChatBridge renderer execution governor', () => {
           session_id: 'session-refuse',
         },
       })
-    ).not.toThrow()
+    ).resolves.toBeTruthy()
   })
 
-  it('normalizes info parts, route artifacts, and content parts through the governor helper', () => {
+  it('normalizes info parts, route artifacts, and content parts through the governor helper', async () => {
     const infoPart: MessageInfoPart = {
       type: 'info',
       text: 'OCR completed for the attached image.',
     }
-    const { reviewedRouteArtifact } = prepareChatBridgeExecutionGovernor({
+    const { reviewedRouteArtifact } = await prepareChatBridgeExecutionGovernor({
       messages: [createTextMessage('msg-route', 'What should I cook for dinner tonight?')],
+      model: createRoutingModel(),
       baseTools: {},
       modelSupportsToolUse: true,
       sessionId: 'session-route',

@@ -86,6 +86,13 @@ function createToolCallingModelStub(
   const chat = vi.fn(
     async (messages: ModelMessage[], options: CallChatCompletionOptions): Promise<StreamTextResult> => {
       const prompt = getLatestUserPrompt(messages)
+
+      if (!options.tools || Object.keys(options.tools).length === 0) {
+        return {
+          contentParts: [{ type: 'text', text: 'semantic routing unavailable' }],
+        }
+      }
+
       const selectedTool = selectTool(prompt)
       const tool = options.tools?.[selectedTool.toolName]
 
@@ -229,7 +236,7 @@ describe('ChatBridge execution governor entrypoint', () => {
         onResultChangeWithCancel: vi.fn(),
       })
 
-      expect(chat).toHaveBeenCalledOnce()
+      expect(chat).toHaveBeenCalledTimes(2)
       expect(findAppPart(result.result.contentParts)).toMatchObject({
         appId: 'chess',
         appName: 'Chess',
@@ -262,7 +269,7 @@ describe('ChatBridge execution governor entrypoint', () => {
         onResultChangeWithCancel: vi.fn(),
       })
 
-      expect(chat).toHaveBeenCalledOnce()
+      expect(chat).toHaveBeenCalledTimes(2)
       expect(result.result.contentParts).toEqual([{ type: 'text', text: 'host response' }])
       expect(langsmithMocks.recordEvent).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -289,7 +296,7 @@ describe('ChatBridge execution governor entrypoint', () => {
         onResultChangeWithCancel: vi.fn(),
       })
 
-      expect(chat).toHaveBeenCalledOnce()
+      expect(chat).toHaveBeenCalledTimes(2)
       expect(result.result.contentParts[0]).toMatchObject({
         type: 'app',
         title: 'Choose the next step',
@@ -322,7 +329,7 @@ describe('ChatBridge execution governor entrypoint', () => {
         onResultChangeWithCancel: vi.fn(),
       })
 
-      expect(chat).toHaveBeenCalledOnce()
+      expect(chat).toHaveBeenCalledTimes(2)
       expect(result.result.contentParts[0]).toMatchObject({
         type: 'app',
         title: 'Keep this in chat',

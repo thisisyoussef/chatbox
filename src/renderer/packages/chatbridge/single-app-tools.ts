@@ -1,7 +1,9 @@
 import type { ToolExecutionOptions, ToolSet } from 'ai'
 import { z } from 'zod'
 import type {
+  ChatBridgeExecutionGovernorRoutingStrategy,
   ChatBridgeExecutionGovernorSelectionSource,
+  ChatBridgeExecutionGovernorSemanticClassifierStatus,
   ChatBridgeHostRuntime,
   ChatBridgeRouteDecision,
   ChatBridgeJsonSchema,
@@ -20,9 +22,10 @@ import {
   wrapChatBridgeHostTools,
   type ReviewedSingleAppSelection,
 } from '@shared/chatbridge'
+import type { ModelInterface } from '@shared/models/types'
 import type { Message } from '@shared/types'
 import platform from '@/platform'
-import { getReviewedAppRouteDecision } from './router/decision'
+import { getIntelligentReviewedAppRouteDecision, getReviewedAppRouteDecision } from './router/decision'
 
 const DEFAULT_LIVE_REVIEWED_APP_PERMISSIONS = ['session.context.read', 'weather.read', 'drive.read', 'drive.write'] as const
 
@@ -51,6 +54,8 @@ type ReviewedSingleAppToolSetResult = {
   tools: ToolSet
   routeDecision: ChatBridgeRouteDecision
   selectionSource: ChatBridgeExecutionGovernorSelectionSource
+  routingStrategy: ChatBridgeExecutionGovernorRoutingStrategy
+  semanticClassifierStatus: ChatBridgeExecutionGovernorSemanticClassifierStatus
   suppressRouteArtifact?: boolean
 }
 
@@ -334,6 +339,8 @@ export function createReviewedSingleAppToolSet(
       tools: createToolsForSelection(routeSelection, options.executors),
       routeDecision,
       selectionSource: 'route-decision',
+      routingStrategy: 'lexical',
+      semanticClassifierStatus: 'not-attempted',
     }
   }
 
@@ -348,6 +355,58 @@ export function createReviewedSingleAppToolSet(
     tools: createToolsForSelection(fallbackSelection, options.executors),
     routeDecision,
     selectionSource,
+    routingStrategy: 'lexical',
+    semanticClassifierStatus: 'not-attempted',
+    suppressRouteArtifact,
+  }
+}
+
+export async function createIntelligentReviewedSingleAppToolSet(
+  options: CreateReviewedSingleAppToolSetOptions & {
+    model: ModelInterface
+    traceParentRunId?: string
+    correlationMetadata?: Record<string, unknown>
+  }
+): Promise<ReviewedSingleAppToolSetResult> {
+  const entries = options.entries ?? ensureDefaultReviewedAppsRegistered()
+  const promptText = getLatestUserPrompt(options.messages)
+  const contextInput = mergeReviewedAppContextInput(options.contextInput)
+  const hostRuntime = resolveHostRuntimeFromContextInput(contextInput)
+  const routeResult = await getIntelligentReviewedAppRouteDecision({
+    promptInput: promptText,
+    contextInput,
+    messages: options.messages,
+    model: options.model,
+    entries,
+    traceParentRunId: options.traceParentRunId,
+    correlationMetadata: options.correlationMetadata,
+  })
+  const routeSelection = createSelectionFromRouteDecision(routeResult.decision, entries)
+
+  if (routeSelection) {
+    return {
+      selection: routeSelection,
+      tools: createToolsForSelection(routeSelection, options.executors),
+      routeDecision: routeResult.decision,
+      selectionSource: 'route-decision',
+      routingStrategy: routeResult.routingStrategy,
+      semanticClassifierStatus: routeResult.semanticClassifierStatus,
+    }
+  }
+
+  const runtimeSupportedEntries = entries.filter((entry) => isReviewedAppSupportedOnHostRuntime(entry, hostRuntime))
+  const fallbackSelection = resolveReviewedSingleAppSelection(options.messages, runtimeSupportedEntries)
+  const selectionSource = fallbackSelection.status === 'matched' ? 'natural-chess-fallback' : 'none'
+  const suppressRouteArtifact =
+    fallbackSelection.status !== 'matched' && shouldSuppressActiveAppRouteArtifact(options.messages, routeResult.decision)
+
+  return {
+    selection: fallbackSelection,
+    tools: createToolsForSelection(fallbackSelection, options.executors),
+    routeDecision: routeResult.decision,
+    selectionSource,
+    routingStrategy: routeResult.routingStrategy,
+    semanticClassifierStatus: routeResult.semanticClassifierStatus,
     suppressRouteArtifact,
   }
 }

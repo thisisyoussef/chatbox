@@ -4,15 +4,17 @@ import type {
   ChatBridgeExecutionGovernorRouteResolution,
   ChatBridgeExecutionGovernorTracePayload,
 } from '@shared/chatbridge'
+import type { ModelInterface } from '@shared/models/types'
 import { wrapChatBridgeHostTools } from '@shared/chatbridge'
 import type { Message, MessageContentParts, MessageInfoPart } from '@shared/types'
 import { createNoopLangSmithAdapter, type LangSmithAdapter } from '@shared/utils/langsmith_adapter'
 import { upsertReviewedAppLaunchParts } from '../reviewed-app-launch'
 import { createReviewedAppRouteArtifact } from '../router/decision'
-import { createReviewedSingleAppToolSet } from '../single-app-tools'
+import { createIntelligentReviewedSingleAppToolSet } from '../single-app-tools'
 
 type PrepareChatBridgeExecutionGovernorOptions = {
   messages: Message[]
+  model: ModelInterface
   baseTools: ToolSet
   modelSupportsToolUse: boolean
   sessionId?: string
@@ -49,6 +51,8 @@ function createTracePayload(input: {
   routeDecision: ChatBridgeExecutionGovernorRouteResolution['routeDecision']
   selection: ChatBridgeExecutionGovernorRouteResolution['selection']
   selectionSource: ChatBridgeExecutionGovernorRouteResolution['selectionSource']
+  routingStrategy: ChatBridgeExecutionGovernorRouteResolution['routingStrategy']
+  semanticClassifierStatus: ChatBridgeExecutionGovernorRouteResolution['semanticClassifierStatus']
   toolNames: string[]
   reviewedRouteArtifact?: MessageContentParts[number]
 }): ChatBridgeExecutionGovernorTracePayload {
@@ -58,6 +62,8 @@ function createTracePayload(input: {
     selectedAppId: input.routeDecision.selectedAppId ?? null,
     selectionStatus: input.selection.status,
     selectionSource: input.selectionSource,
+    routingStrategy: input.routingStrategy,
+    semanticClassifierStatus: input.semanticClassifierStatus,
     toolNames: input.toolNames,
     artifactInserted: Boolean(input.reviewedRouteArtifact),
     artifactKind: toArtifactKind(input.reviewedRouteArtifact),
@@ -68,9 +74,9 @@ export function prepareToolsForExecution(tools: ToolSet, sessionId?: string): To
   return wrapChatBridgeHostTools(tools, { sessionId })
 }
 
-export function prepareChatBridgeExecutionGovernor(
+export async function prepareChatBridgeExecutionGovernor(
   options: PrepareChatBridgeExecutionGovernorOptions
-): PreparedChatBridgeExecutionGovernorResult {
+): Promise<PreparedChatBridgeExecutionGovernorResult> {
   if (!options.modelSupportsToolUse) {
     return {
       tools: prepareToolsForExecution(options.baseTools, options.sessionId),
@@ -78,7 +84,12 @@ export function prepareChatBridgeExecutionGovernor(
   }
 
   const traceAdapter = options.traceAdapter ?? createNoopLangSmithAdapter()
-  const reviewedToolSet = createReviewedSingleAppToolSet({ messages: options.messages })
+  const reviewedToolSet = await createIntelligentReviewedSingleAppToolSet({
+    messages: options.messages,
+    model: options.model,
+    traceParentRunId: options.traceParentRunId,
+    correlationMetadata: options.correlationMetadata,
+  })
   const toolNames = Object.keys(reviewedToolSet.tools).sort()
   const reviewedRouteArtifact =
     !reviewedToolSet.suppressRouteArtifact &&
@@ -90,6 +101,8 @@ export function prepareChatBridgeExecutionGovernor(
     routeDecision: reviewedToolSet.routeDecision,
     selection: reviewedToolSet.selection,
     selectionSource: reviewedToolSet.selectionSource,
+    routingStrategy: reviewedToolSet.routingStrategy,
+    semanticClassifierStatus: reviewedToolSet.semanticClassifierStatus,
     toolNames,
     reviewedRouteArtifact,
   })
@@ -97,8 +110,37 @@ export function prepareChatBridgeExecutionGovernor(
     routeDecision: reviewedToolSet.routeDecision,
     selection: reviewedToolSet.selection,
     selectionSource: reviewedToolSet.selectionSource,
+    routingStrategy: reviewedToolSet.routingStrategy,
+    semanticClassifierStatus: reviewedToolSet.semanticClassifierStatus,
     toolNames,
     tracePayload,
+  }
+
+  if (reviewedToolSet.semanticClassifierStatus !== 'not-attempted') {
+    void traceAdapter
+      .recordEvent({
+        name: 'chatbridge.routing.semantic-reviewed-app-classifier',
+        runType: 'tool',
+        parentRunId: options.traceParentRunId,
+        inputs: {
+          prompt: reviewedToolSet.routeDecision.prompt,
+        },
+        outputs: {
+          status: reviewedToolSet.semanticClassifierStatus,
+          routingStrategy: reviewedToolSet.routingStrategy,
+          lexicalFallbackUsed: reviewedToolSet.routingStrategy === 'lexical',
+          decisionKind: reviewedToolSet.routeDecision.kind,
+          selectedAppId: reviewedToolSet.routeDecision.selectedAppId ?? null,
+        },
+        metadata: {
+          ...options.correlationMetadata,
+          operation: 'chatbridgeSemanticReviewedAppClassifier',
+        },
+        tags: ['chatbox', 'renderer', 'chatbridge', 'routing', 'semantic'],
+      })
+      .catch((error) => {
+        console.debug('Failed to record ChatBridge semantic route classifier trace event.', error)
+      })
   }
 
   void traceAdapter
