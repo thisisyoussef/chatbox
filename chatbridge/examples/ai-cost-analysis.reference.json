@@ -1,0 +1,96 @@
+{
+  "pricingCheckedAt": "2026-04-05",
+  "primaryProjectionProfile": "openai_gpt_5_4_mini",
+  "actualReproducibleDevelopmentHarness": {
+    "llmApiCostUsd": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "apiCalls": 0,
+    "embeddingsCostUsd": 0,
+    "otherAiCostUsd": 0,
+    "notes": [
+      "Integration tests use deterministic mocks instead of live model calls.",
+      "LangSmith is a noop sink by default unless LANGSMITH_TRACING=true is set.",
+      "Seeded reviewer threads are fixture-backed host state, not live generations."
+    ]
+  },
+  "referenceProfiles": {
+    "openai_gpt_5_4_mini": {
+      "label": "OpenAI GPT-5.4 mini",
+      "inputUsdPer1MTokens": 0.75,
+      "outputUsdPer1MTokens": 4.5,
+      "source": "https://openai.com/api/pricing/"
+    },
+    "anthropic_claude_3_5_haiku": {
+      "label": "Anthropic Claude Haiku 3.5",
+      "inputUsdPer1MTokens": 0.8,
+      "outputUsdPer1MTokens": 4,
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing"
+    },
+    "google_gemini_2_5_flash_lite": {
+      "label": "Google Gemini 2.5 Flash-Lite",
+      "inputUsdPer1MTokens": 0.1,
+      "outputUsdPer1MTokens": 0.4,
+      "source": "https://ai.google.dev/gemini-api/docs/pricing"
+    }
+  },
+  "monthlyWorkloadPerActiveUser": {
+    "route_only": {
+      "label": "Route-only clarify or refusal",
+      "monthlyCount": 10,
+      "inputTokensPerSession": 1200,
+      "outputTokensPerSession": 250
+    },
+    "drawing_kit": {
+      "label": "Drawing Kit follow-up round",
+      "monthlyCount": 4,
+      "inputTokensPerSession": 2400,
+      "outputTokensPerSession": 550
+    },
+    "chess_coach": {
+      "label": "Chess coaching round",
+      "monthlyCount": 4,
+      "inputTokensPerSession": 3500,
+      "outputTokensPerSession": 900
+    },
+    "flashcard_study": {
+      "label": "Flashcard study round",
+      "monthlyCount": 8,
+      "inputTokensPerSession": 2800,
+      "outputTokensPerSession": 700
+    },
+    "flashcard_drive_resume": {
+      "label": "Flashcard Drive resume/save round",
+      "monthlyCount": 4,
+      "inputTokensPerSession": 1800,
+      "outputTokensPerSession": 350
+    }
+  },
+  "monthlyTotalsPerActiveUser": {
+    "inputTokens": 65200,
+    "outputTokens": 15300
+  },
+  "monthlyProjectionUsd": {
+    "openai_gpt_5_4_mini": {
+      "perActiveUser": 0.11775,
+      "100": 11.77,
+      "1000": 117.75,
+      "10000": 1177.5,
+      "100000": 11775
+    },
+    "anthropic_claude_3_5_haiku": {
+      "perActiveUser": 0.11336,
+      "100": 11.34,
+      "1000": 113.36,
+      "10000": 1133.6,
+      "100000": 11336
+    },
+    "google_gemini_2_5_flash_lite": {
+      "perActiveUser": 0.01264,
+      "100": 1.26,
+      "1000": 12.64,
+      "10000": 126.4,
+      "100000": 1264
+    }
+  }
+}

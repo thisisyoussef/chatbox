@@ -17,6 +17,7 @@ const requiredDocReferences = [
   './INTEGRATION_HARNESS.md',
   './EVALS_AND_OBSERVABILITY.md',
   './PARTNER_SDK.md',
+  './AI_COST_ANALYSIS.md',
 ]
 
 const requiredDocPaths = [
@@ -29,6 +30,7 @@ const requiredDocPaths = [
   'chatbridge/INTEGRATION_HARNESS.md',
   'chatbridge/EVALS_AND_OBSERVABILITY.md',
   'chatbridge/PARTNER_SDK.md',
+  'chatbridge/AI_COST_ANALYSIS.md',
 ]
 
 const gradedScenarioHeadings = [
